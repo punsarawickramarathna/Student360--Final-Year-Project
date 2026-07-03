@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-dark: #071428;
+  --card: #0f1724;
+  --muted: #9aa4b2;
+  --accent-from: #3b82f6;
+  --accent-to: #8b5cf6;
+}
+
+body {
+  background: linear-gradient(180deg, #071428 0%, #051023 100%);
+  color: #e6eef8;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue";
+}
+
+/* make card text clear */
+.bg-\[var\(--card\)\] { color: #e6eef8; }
+
+/* link colors */
+a { color: #cfe6ff; text-decoration: none; }

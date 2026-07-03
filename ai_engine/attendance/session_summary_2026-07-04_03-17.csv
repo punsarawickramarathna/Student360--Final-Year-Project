@@ -1,0 +1,5 @@
+Student_ID,Date,Arrival_Time,cheating_sec,non_cheating_sec,attentive_sec,sleeping_sec,phone_use_sec,not_attentive_sec,timeline,last_behavior
+ITBIN-2211-0320,2026-07-04,03:17:27,0.0,0.0,18.31,0.0,7.63,0.0,"[{'time': '03:17:27', 'behavior': 'attentive'}, {'time': '03:17:44', 'behavior': 'phone_use'}, {'time': '03:17:44', 'behavior': 'attentive'}, {'time': '03:17:46', 'behavior': 'phone_use'}, {'time': '03:17:46', 'behavior': 'attentive'}, {'time': '03:17:46', 'behavior': 'phone_use'}]",phone_use
+ITBIN-2211-0317,2026-07-04,03:17:27,0.0,0.0,25.94,0.0,0.0,0.0,"[{'time': '03:17:27', 'behavior': 'attentive'}]",attentive
+ITBIN-2211-0253,2026-07-04,03:17:27,0.0,0.0,25.94,0.0,0.0,0.0,"[{'time': '03:17:27', 'behavior': 'attentive'}]",attentive
+ITBNM-2211-0112,2026-07-04,03:17:27,0.0,0.0,25.31,0.0,0.62,0.0,"[{'time': '03:17:27', 'behavior': 'attentive'}, {'time': '03:17:49', 'behavior': 'phone_use'}, {'time': '03:17:50', 'behavior': 'attentive'}]",attentive

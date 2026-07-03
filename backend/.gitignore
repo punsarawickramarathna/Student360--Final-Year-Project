@@ -1,0 +1,27 @@
+# React
+frontend/node_modules/
+frontend/build/
+
+# React cache
+frontend/node_modules/.cache/
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.env
+
+# VS Code
+.vscode/
+
+# Logs
+*.log
+
+# Video files
+*.mp4
+*.avi
+*.mov
+
+# OS
+Thumbs.db
+.DS_Store
