@@ -1,69 +1,194 @@
 // src/App.js
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import Login from "./pages/Login";
+
+import { useState } from "react";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+} from "react-router-dom";
+
+import SplashScreen from "./components/SplashScreen";
 import RequireAuth from "./components/RequireAuth";
+
+// General pages
+import RoleSelection from "./pages/RoleSelection";
+import Login from "./pages/Login";
+
+// Student pages
+import StudentDashboard from "./pages/student/Dashboard";
 import AppealForm from "./pages/student/AppealForm";
 import AppealsList from "./pages/student/AppealsList";
 import Profile from "./pages/student/Profile";
-import StudentAppeals from "./pages/student/Appeals";
-import LecturerAppeals from "./pages/lecturer/Appeals";
-
-import ClassroomSelect from "./pages/lecturer/ClassroomSelect";
-import AddUser from "./pages/admin/AddUser";
 import EditProfile from "./pages/student/EditProfile";
+import ChangePassword from "./pages/student/ChangePassword";
 
-
-
-
-// student
-import StudentDashboard from "./pages/student/Dashboard";
-// lecturer
+// Lecturer pages
 import LecturerDashboard from "./pages/lecturer/Dashboard";
-// admin
+import LecturerAppeals from "./pages/lecturer/Appeals";
+import ClassroomSelect from "./pages/lecturer/ClassroomSelect";
+
+// Admin pages
 import AdminDashboard from "./pages/admin/Dashboard";
+import AddUser from "./pages/admin/AddUser";
 
 export default function App() {
+  const [loading, setLoading] = useState(true);
+
+  // Show splash screen for 3 seconds
+  if (loading) {
+    return (
+      <SplashScreen
+        onFinish={() => setLoading(false)}
+      />
+    );
+  }
+
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Navigate to="/login" replace />} />
-        <Route path="/login" element={<Login />} />
 
-        <Route path="/student/dashboard" element={
-          <RequireAuth allowedRoles={["student"]}><StudentDashboard /></RequireAuth>
-        } />
-
-        <Route path="/student/appeals" element={<StudentAppeals />} />
-
-        <Route path="/lecturer/appeals" element={<LecturerAppeals />} />
-
-
-        <Route path="/lecturer/classroom" element={<ClassroomSelect/>}/>
-        
-
-        <Route path="/admin/add-user" element={<AddUser />} />
-
-        <Route path="/" element={<Login />} />
-
-        <Route path="/student/dashboard" element={<StudentDashboard />} />
-
-          <Route path="/student/profile" element={<Profile />} />
-
-        <Route path="/lecturer/dashboard" element={
-          <RequireAuth allowedRoles={["lecturer"]}><LecturerDashboard /></RequireAuth>
-        } />
-        <Route path="/student/appeals" element={<RequireAuth allowedRoles={["student"]}><AppealsList /></RequireAuth>} />
-        <Route path="/student/appeal/new" element={<RequireAuth allowedRoles={["student"]}><AppealForm onSubmitted={() => window.location.href = "/student/appeals"} /></RequireAuth>} />
-        <Route path="/admin/dashboard" element={
-          <RequireAuth allowedRoles={["admin"]}><AdminDashboard /></RequireAuth>
-        } />
-
-        <Route path="*" element={<div className="p-8">404 - Not Found</div>} />
-        <Route path="/student/profile" element={<Profile />} />
+        {/* Default route */}
         <Route
-    path="/student/edit-profile"
-    element={<EditProfile />}
+          path="/"
+          element={<Navigate to="/roles" replace />}
+        />
+
+        {/* Public routes */}
+        <Route
+          path="/roles"
+          element={<RoleSelection />}
+        />
+
+        <Route
+          path="/login"
+          element={<Login />}
+        />
+
+        {/* Student routes */}
+        <Route
+          path="/student/dashboard"
+          element={
+            <RequireAuth allowedRoles={["student"]}>
+              <StudentDashboard />
+            </RequireAuth>
+          }
+        />
+
+        <Route
+          path="/student/profile"
+          element={
+            <RequireAuth allowedRoles={["student"]}>
+              <Profile />
+            </RequireAuth>
+          }
+        />
+
+        <Route
+          path="/student/edit-profile"
+          element={
+            <RequireAuth allowedRoles={["student"]}>
+              <EditProfile />
+            </RequireAuth>
+          }
+        />
+
+        <Route
+          path="/student/appeals"
+          element={
+            <RequireAuth allowedRoles={["student"]}>
+              <AppealsList />
+            </RequireAuth>
+          }
+        />
+
+        <Route
+          path="/student/appeal/new"
+          element={
+            <RequireAuth allowedRoles={["student"]}>
+              <AppealForm
+                onSubmitted={() => {
+                  window.location.href = "/student/appeals";
+                }}
+              />
+            </RequireAuth>
+          }
+        />
+
+        <Route
+  path="/student/change-password"
+  element={
+    <RequireAuth allowedRoles={["student"]}>
+      <ChangePassword />
+    </RequireAuth>
+  }
 />
+
+        {/* Lecturer routes */}
+        <Route
+          path="/lecturer/dashboard"
+          element={
+            <RequireAuth allowedRoles={["lecturer"]}>
+              <LecturerDashboard />
+            </RequireAuth>
+          }
+        />
+
+        <Route
+          path="/lecturer/appeals"
+          element={
+            <RequireAuth allowedRoles={["lecturer"]}>
+              <LecturerAppeals />
+            </RequireAuth>
+          }
+        />
+
+        <Route
+          path="/lecturer/classroom"
+          element={
+            <RequireAuth allowedRoles={["lecturer"]}>
+              <ClassroomSelect />
+            </RequireAuth>
+          }
+        />
+
+        {/* Admin routes */}
+        <Route
+          path="/admin/dashboard"
+          element={
+            <RequireAuth allowedRoles={["admin"]}>
+              <AdminDashboard />
+            </RequireAuth>
+          }
+        />
+
+        <Route
+          path="/admin/add-user"
+          element={
+            <RequireAuth allowedRoles={["admin"]}>
+              <AddUser />
+            </RequireAuth>
+          }
+        />
+
+        {/* 404 route */}
+        <Route
+          path="*"
+          element={
+            <div className="min-h-screen bg-[#08111f] text-white flex items-center justify-center">
+              <div className="text-center">
+                <h1 className="text-4xl font-bold">
+                  404
+                </h1>
+
+                <p className="mt-3 text-gray-400">
+                  Page Not Found
+                </p>
+              </div>
+            </div>
+          }
+        />
+
       </Routes>
     </BrowserRouter>
   );
