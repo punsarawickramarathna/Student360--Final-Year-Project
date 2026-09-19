@@ -7,7 +7,7 @@ from datetime import datetime
 router = APIRouter()
 
 
-@router.post("/upload-session")
+@router.post("/upload-video-session")
 async def upload_session(file: UploadFile = File(...)):
 
     contents = await file.read()
