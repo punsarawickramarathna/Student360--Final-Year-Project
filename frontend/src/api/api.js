@@ -1,8 +1,54 @@
+// src/api/api.js
+
 const API = "http://127.0.0.1:8000";
 
+// ---------------------------------
+// Common response handler
+// ---------------------------------
+
+const handleResponse = async (response) => {
+  let data = {};
+
+  try {
+    data = await response.json();
+  } catch {
+    data = {};
+  }
+
+  if (!response.ok) {
+    throw {
+      status: response.status,
+      response: {
+        data,
+      },
+      message:
+        data.detail ||
+        data.message ||
+        "Request failed",
+    };
+  }
+
+  return data;
+};
+
+// ---------------------------------
+// Authorization header
+// ---------------------------------
+
+const getAuthHeaders = () => {
+  const token = localStorage.getItem("token");
+
+  return {
+    Authorization: `Bearer ${token}`,
+  };
+};
+
+// ---------------------------------
 // Login
+// ---------------------------------
+
 export const loginUser = async (body) => {
-  const res = await fetch(`${API}/login`, {
+  const response = await fetch(`${API}/login`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -10,129 +56,252 @@ export const loginUser = async (body) => {
     body: JSON.stringify(body),
   });
 
-  return await res.json();
+  return handleResponse(response);
 };
 
+// ---------------------------------
+// Register user
+// ---------------------------------
+
+export const registerUser = async (body) => {
+  const response = await fetch(`${API}/register`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  return handleResponse(response);
+};
+
+// ---------------------------------
 // Students
+// ---------------------------------
+
 export const getStudents = async () => {
-  const res = await fetch(`${API}/students`);
-  return await res.json();
+  const response = await fetch(`${API}/students`);
+
+  return handleResponse(response);
 };
 
+// ---------------------------------
 // Attendance
+// ---------------------------------
+
 export const getAttendance = async () => {
-  const res = await fetch(`${API}/attendance`);
-  return await res.json();
+  const response = await fetch(`${API}/attendance`);
+
+  return handleResponse(response);
 };
 
+// ---------------------------------
 // Behavior
+// ---------------------------------
+
 export const getBehavior = async () => {
-  const res = await fetch(`${API}/behavior`);
-  return await res.json();
+  const response = await fetch(`${API}/behavior`);
+
+  return handleResponse(response);
 };
 
+// ---------------------------------
 // Appeals
+// ---------------------------------
+
 export const getAppeals = async () => {
-  const res = await fetch(`${API}/appeals`);
-  return await res.json();
+  const response = await fetch(`${API}/appeals`);
+
+  return handleResponse(response);
 };
 
 export const submitAppeal = async (body) => {
-  const res = await fetch(`${API}/appeals`, {
+  const response = await fetch(`${API}/appeals`, {
     method: "POST",
     headers: {
-      "Content-Type":"application/json"
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
     },
-    body:JSON.stringify(body)
+    body: JSON.stringify(body),
   });
 
-  return await res.json();
+  return handleResponse(response);
 };
 
-// Register User
-export const registerUser = async (body)=>{
-    const res=await fetch(`${API}/register`,{
-        method:"POST",
-        headers:{
-            "Content-Type":"application/json"
-        },
-        body:JSON.stringify(body)
-    });
-
-    return await res.json();
-}
-
+// ---------------------------------
 // Sessions
+// ---------------------------------
+
 export const getSessions = async () => {
+  const response = await fetch(`${API}/sessions`);
 
-    const res = await fetch(`${API}/sessions`);
-
-    return await res.json();
-
+  return handleResponse(response);
 };
 
-export const getEvidence = async (student_id) => {
+// ---------------------------------
+// Evidence
+// ---------------------------------
 
-    const res = await fetch(
-        `http://127.0.0.1:8000/evidence/${student_id}`
-    );
+export const getEvidence = async (studentId) => {
+  const response = await fetch(
+    `${API}/evidence/${studentId}`
+  );
 
-    return await res.json();
+  return handleResponse(response);
 };
+
+// ---------------------------------
+// Email
+// ---------------------------------
 
 export const sendEmail = async (body) => {
+  const response = await fetch(`${API}/send-email`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+    },
+    body: JSON.stringify(body),
+  });
 
-    const res = await fetch(`${API}/send-email`, {
-
-        method: "POST",
-
-        headers: {
-
-            "Content-Type": "application/json"
-
-        },
-
-        body: JSON.stringify(body)
-
-    });
-
-    return await res.json();
-
+  return handleResponse(response);
 };
+
+// ---------------------------------
+// Session CSV upload
+// ---------------------------------
 
 export const uploadSessionCSV = async (file) => {
   const formData = new FormData();
+
   formData.append("file", file);
 
-  const res = await fetch(`${API}/upload-session`, {
-    method: "POST",
-    body: formData,
-  });
+  const response = await fetch(
+    `${API}/upload-session`,
+    {
+      method: "POST",
+      headers: {
+        ...getAuthHeaders(),
+      },
+      body: formData,
+    }
+  );
 
-  return await res.json();
+  return handleResponse(response);
 };
 
-export const uploadProfileImage = async (file) => {
+// ---------------------------------
+// Get logged-in user profile
+// ---------------------------------
 
-  const formData = new FormData();
-  formData.append("file", file);
-
-  const res = await fetch("http://127.0.0.1:8000/upload-profile-image", {
-    method: "POST",
-    body: formData
+export const getMyProfile = async () => {
+  const response = await fetch(`${API}/profile/me`, {
+    method: "GET",
+    headers: {
+      ...getAuthHeaders(),
+    },
   });
 
-  return await res.json();
+  return handleResponse(response);
 };
 
-export const updateProfile = async (student_id, body) => {
-  const res = await fetch(`${API}/update-profile/${student_id}`, {
+// ---------------------------------
+// Update logged-in user profile
+// ---------------------------------
+
+export const updateMyProfile = async (body) => {
+  const response = await fetch(`${API}/profile/me`, {
     method: "PUT",
     headers: {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
     },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
   });
 
-  return await res.json();
+  return handleResponse(response);
+};
+
+// ---------------------------------
+// Upload profile image
+// ---------------------------------
+
+export const uploadProfileImage = async (file) => {
+  const formData = new FormData();
+
+  formData.append("file", file);
+
+  const response = await fetch(
+    `${API}/profile/photo`,
+    {
+      method: "POST",
+      headers: {
+        ...getAuthHeaders(),
+      },
+      body: formData,
+    }
+  );
+
+  return handleResponse(response);
+};
+
+// ---------------------------------
+// Delete profile image
+// ---------------------------------
+
+export const deleteProfileImage = async () => {
+  const response = await fetch(
+    `${API}/profile/photo`,
+    {
+      method: "DELETE",
+      headers: {
+        ...getAuthHeaders(),
+      },
+    }
+  );
+
+  return handleResponse(response);
+};
+
+// ---------------------------------
+// Change password
+// ---------------------------------
+
+export const changePassword = async (body) => {
+  const response = await fetch(
+    `${API}/profile/change-password`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        ...getAuthHeaders(),
+      },
+      body: JSON.stringify(body),
+    }
+  );
+
+  return handleResponse(response);
+};
+
+// ---------------------------------
+// Convert backend image path
+// ---------------------------------
+
+export const getImageURL = (photoPath) => {
+  if (!photoPath) {
+    return "";
+  }
+
+  if (
+    photoPath.startsWith("http://") ||
+    photoPath.startsWith("https://")
+  ) {
+    return photoPath;
+  }
+
+  const cleanPath = photoPath
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "");
+
+  return `${API}/${cleanPath}`;
 };

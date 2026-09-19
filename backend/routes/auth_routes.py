@@ -9,12 +9,7 @@ router = APIRouter()
 @router.post("/register")
 def register(user: UserCreate):
 
-    print("========== REGISTER ==========")
-    print("student_id:", user.student_id)
-    print("password:", user.password)
-    print("type:", type(user.password))
-    print("length:", len(user.password))
-    print("==============================")
+    
 
     existing = users_collection.find_one({
         "student_id": user.student_id
@@ -24,17 +19,22 @@ def register(user: UserCreate):
         raise HTTPException(status_code=400, detail="User already exists")
 
     users_collection.insert_one({
-        "student_id": user.student_id,
-        "name": user.name,
-        "intake": user.intake,
-        "password": hash_password(user.password),
-        "role": user.role,
-        "department": "",
-        "year": "",
-        "email": "",
-        "phone": "",
-        "photo": ""
-    })
+    "student_id": user.student_id,
+    "name": user.name,
+    "intake": user.intake,
+    "password": hash_password(user.password),
+    "role": user.role,
+
+    "department": "",
+    "year": "",
+    "email": "",
+    "phone": "",
+    "address": "",
+    "photo": "",
+
+    "account_status": "active",
+    "must_change_password": True
+})
 
     return {"message": "User created successfully"}
 
@@ -48,6 +48,7 @@ def login(data: LoginModel):
 
     if not user:
         raise HTTPException(status_code=401, detail="Invalid ID")
+   
 
     valid = verify_password(
         data.password,
@@ -67,18 +68,20 @@ def login(data: LoginModel):
         "token": token,
 
         "user": {
+    "student_id": user["student_id"],
+    "name": user["name"],
+    "intake": user.get("intake", ""),
+    "role": user["role"],
 
-            "student_id": user["student_id"],
-            "name": user["name"],
-            "intake": user.get("intake", ""),
-            "role": user["role"],
+    "department": user.get("department", ""),
+    "year": user.get("year", ""),
+    "email": user.get("email", ""),
+    "phone": user.get("phone", ""),
+    "address": user.get("address", ""),
+    "photo": user.get("photo", ""),
 
-            "department": user.get("department", ""),
-            "year": user.get("year", ""),
-            "email": user.get("email", ""),
-            "phone": user.get("phone", ""),
-            "photo": user.get("photo", "")
-
-        }
+    "account_status": user.get("account_status", "active"),
+    "must_change_password": user.get("must_change_password", False)
+}
 
     }
