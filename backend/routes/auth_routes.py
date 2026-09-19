@@ -9,12 +9,7 @@ router = APIRouter()
 @router.post("/register")
 def register(user: UserCreate):
 
-    print("========== REGISTER ==========")
-    print("student_id:", user.student_id)
-    print("password:", user.password)
-    print("type:", type(user.password))
-    print("length:", len(user.password))
-    print("==============================")
+    
 
     existing = users_collection.find_one({
         "student_id": user.student_id
@@ -48,6 +43,7 @@ def login(data: LoginModel):
 
     if not user:
         raise HTTPException(status_code=401, detail="Invalid ID")
+   
 
     valid = verify_password(
         data.password,

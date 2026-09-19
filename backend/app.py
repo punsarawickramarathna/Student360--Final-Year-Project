@@ -17,6 +17,7 @@ from routes.sessions import router as sessions_router
 from routes.email import router as email_router
 from routes.profile import router as profile_router
 from routes.users import router as users_router
+from routes.register import router as register_router
 
 app = FastAPI(title="Student360 Backend")
 
@@ -42,6 +43,7 @@ app.include_router(sessions_router)
 app.include_router(email_router)
 app.include_router(profile_router)
 app.include_router(users_router)
+app.include_router(register_router)
 
 
 @app.get("/")
