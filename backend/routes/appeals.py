@@ -13,7 +13,7 @@ def create_appeal(data: AppealModel):
         "message": data.message,
         "type": data.type,
         "status": "Pending",
-        "created_at": datetime.utcnow()
+        "created_at": datetime.utcnow().isoformat()  
     })
 
     return {"message": "Appeal submitted"}

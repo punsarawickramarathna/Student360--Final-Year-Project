@@ -172,14 +172,14 @@ export default function StudentDashboard() {
     student.username ||
     "";
 
-  const sameStudent = (record) => {
-    return (
-      String(record?.student_id || record?.id || "")
-        .trim()
-        .toLowerCase() ===
-      String(studentId).trim().toLowerCase()
-    );
-  };
+ const sameStudent = (record) => {
+  if (!record) return false;
+  const recordId = String(
+    record?.student_id || record?.studentId || record?.user_id || record?.id || ""
+  ).trim().toLowerCase();
+  const currentStudentId = String(studentId).trim().toLowerCase();
+  return recordId === currentStudentId;
+};
 
   const myAttendance = attendance.filter(sameStudent);
   const myBehavior = behavior.filter(sameStudent);

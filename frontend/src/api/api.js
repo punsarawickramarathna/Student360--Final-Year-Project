@@ -109,10 +109,19 @@ export const getBehavior = async () => {
 // Appeals
 // ---------------------------------
 
+// ---------------------------------
+// Appeals (Fixed Response Unpacking)
+// ---------------------------------
+
 export const getAppeals = async () => {
   const response = await fetch(`${API}/appeals`);
-
-  return handleResponse(response);
+  const result = await handleResponse(response);
+  
+  // Backend eken { count: X, data: [...] } widihata ena nisa array eka extract karagannawa
+  if (Array.isArray(result)) {
+    return result;
+  }
+  return result?.data || [];
 };
 
 export const submitAppeal = async (body) => {
