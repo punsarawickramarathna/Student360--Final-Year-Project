@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
 
 import {
   getStudents,
@@ -72,11 +73,6 @@ export default function LecturerDashboard() {
   const [loading, setLoading] = useState(true);
   const [notifying, setNotifying] = useState(false);
   const [error, setError] = useState("");
-
-  const [aiRunning, setAiRunning] = useState(false);
-  const [aiLoading, setAiLoading] = useState(false);
-
-  
 
   useEffect(() => {
     loadDashboard();
@@ -409,30 +405,6 @@ export default function LecturerDashboard() {
       alert("There are no risk students to notify.");
       return;
     }
-    const toggleAIModel = async () => {
-  try {
-    setAiLoading(true);
-
-    if (!aiRunning) {
-      // Backend endpoint එක ready වුණාම මෙතන API call එක දාන්න
-      // await startAIModel();
-
-      setAiRunning(true);
-      alert("AI Model started successfully");
-    } else {
-      // Backend endpoint එක ready වුණාම මෙතන API call එක දාන්න
-      // await stopAIModel();
-
-      setAiRunning(false);
-      alert("AI Model stopped successfully");
-    }
-  } catch (err) {
-    console.error("AI model error:", err);
-    alert("Unable to change AI model status");
-  } finally {
-    setAiLoading(false);
-  }
-};
 
     const emails = riskyStudents
       .map((student) => student.email)
@@ -465,53 +437,42 @@ export default function LecturerDashboard() {
 
     const htmlBody = `
       <!DOCTYPE html>
-
       <html>
         <head>
           <meta charset="UTF-8" />
         </head>
-
         <body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,sans-serif;">
-
           <table width="100%" cellpadding="0" cellspacing="0">
             <tr>
               <td align="center" style="padding:30px 10px;">
-
                 <table
                   width="650"
                   cellpadding="0"
                   cellspacing="0"
                   style="max-width:650px;background:white;border-radius:12px;overflow:hidden;box-shadow:0 0 15px rgba(0,0,0,.1);"
                 >
-
                   <tr>
                     <td style="background:#0f172a;padding:25px;color:white;text-align:center;">
                       <h1 style="margin:0;">
                         🎓 Student360 AI
                       </h1>
-
                       <p style="margin-top:8px;">
                         AI Classroom Analytics System
                       </p>
                     </td>
                   </tr>
-
                   <tr>
                     <td style="padding:35px;">
-
                       <h2 style="color:#ef4444;">
                         Academic Performance Alert
                       </h2>
-
                       <p>
                         Dear Student,
                       </p>
-
                       <p>
                         The Student360 AI Classroom Monitoring System has identified
                         that your classroom performance requires attention.
                       </p>
-
                       <table
                         width="100%"
                         style="border-collapse:collapse;margin-top:20px;"
@@ -524,32 +485,27 @@ export default function LecturerDashboard() {
                             Areas to Improve
                           </th>
                         </tr>
-
                         <tr>
                           <td style="padding:12px;">
                             ✅ Attend lectures regularly
                           </td>
                         </tr>
-
                         <tr>
                           <td style="padding:12px;">
                             ✅ Improve classroom attention
                           </td>
                         </tr>
-
                         <tr>
                           <td style="padding:12px;">
                             ✅ Avoid unnecessary phone usage
                           </td>
                         </tr>
-
                         <tr>
                           <td style="padding:12px;">
                             ✅ Participate actively during lectures
                           </td>
                         </tr>
                       </table>
-
                       <div
                         style="
                           margin-top:25px;
@@ -561,17 +517,14 @@ export default function LecturerDashboard() {
                         <strong>
                           AI Recommendation
                         </strong>
-
                         <p>
                           Attend lectures regularly, stay attentive, avoid phone
                           usage and actively participate in classroom activities.
                         </p>
                       </div>
-
                       <h3 style="margin-top:25px;">
                         Students Requiring Attention
                       </h3>
-
                       <table
                         width="100%"
                         style="border-collapse:collapse;margin-top:10px;"
@@ -580,26 +533,21 @@ export default function LecturerDashboard() {
                           <th align="left" style="padding:10px;">
                             Name
                           </th>
-
                           <th align="left" style="padding:10px;">
                             Student ID
                           </th>
-
                           <th align="left" style="padding:10px;">
                             Overall
                           </th>
                         </tr>
-
                         ${studentList}
                       </table>
-
                       <p style="margin-top:25px;">
                         This notification was automatically generated by
                         <b> Student360 AI Analytics</b>.
                       </p>
                     </td>
                   </tr>
-
                   <tr>
                     <td style="background:#0f172a;color:white;padding:18px;text-align:center;">
                       Student360 AI
@@ -609,12 +557,10 @@ export default function LecturerDashboard() {
                       AI-Based Classroom Monitoring System
                     </td>
                   </tr>
-
                 </table>
               </td>
             </tr>
           </table>
-
         </body>
       </html>
     `;
@@ -644,28 +590,6 @@ export default function LecturerDashboard() {
       setNotifying(false);
     }
   };
-  const toggleAIModel = async () => {
-  try {
-    setAiLoading(true);
-
-    await new Promise((resolve) => {
-      setTimeout(resolve, 800);
-    });
-
-    if (aiRunning) {
-      setAiRunning(false);
-      alert("AI Model stopped successfully");
-    } else {
-      setAiRunning(true);
-      alert("AI Model started successfully");
-    }
-  } catch (error) {
-    console.error("AI model error:", error);
-    alert("Unable to change AI model status");
-  } finally {
-    setAiLoading(false);
-  }
-};
 
   const logout = () => {
     localStorage.removeItem("token");
@@ -759,7 +683,6 @@ export default function LecturerDashboard() {
     <div className="min-h-screen bg-[#071828] text-white">
 
       {/* Header */}
-
       <header className="bg-[#091d30] border-b border-white/10 sticky top-0 z-30">
         <div className="max-w-[1600px] mx-auto px-4 md:px-8 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
 
@@ -781,63 +704,46 @@ export default function LecturerDashboard() {
 
           <div className="flex flex-wrap items-center gap-3">
 
-  {/* AI MODEL BUTTON */}
-  <button
-    onClick={toggleAIModel}
-    disabled={aiLoading}
-    className={`px-4 py-2 rounded-lg font-semibold border transition flex items-center gap-2 ${
-      aiRunning
-        ? "bg-green-500/20 text-green-300 border-green-500/40 hover:bg-green-500/30"
-        : "bg-purple-500/20 text-purple-300 border-purple-500/40 hover:bg-purple-500/30"
-    } disabled:opacity-50 disabled:cursor-not-allowed`}
-  >
-    <span
-      className={`w-2.5 h-2.5 rounded-full ${
-        aiRunning
-          ? "bg-green-400 animate-pulse"
-          : "bg-gray-400"
-      }`}
-    />
+            {/* DEDICATED LIVE MONITORING LAUNCH BUTTON */}
+            <button
+              onClick={() => window.open("/lecturer/monitoring", "_blank")}
+              className="px-5 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white shadow-lg shadow-blue-500/25 border border-blue-400/30 flex items-center gap-2.5 transition-all transform hover:scale-[1.03]"
+            >
+              <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
+              🚀 Launch AI Monitoring Console
+            </button>
 
-    {aiLoading
-      ? "Processing..."
-      : aiRunning
-      ? "Stop AI Model"
-      : "Start AI Model"}
-  </button>
+            {/* CHANGE CLASSROOM BUTTON */}
+            <button
+              onClick={() => navigate("/lecturer/classroom")}
+              className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-sm font-semibold transition"
+            >
+              Change Classroom
+            </button>
 
-  {/* CHANGE CLASSROOM BUTTON */}
-  <button
-    onClick={() => navigate("/lecturer/classroom")}
-    className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition"
-  >
-    Change Classroom
-  </button>
+            {/* APPEALS BUTTON */}
+            <button
+              onClick={() => navigate("/lecturer/appeals")}
+              className="px-4 py-2 rounded-xl bg-blue-600/20 text-blue-300 hover:bg-blue-600/30 border border-blue-500/30 text-sm font-semibold transition"
+            >
+              View Appeals
+            </button>
 
-  {/* APPEALS BUTTON */}
-  <button
-    onClick={() => navigate("/lecturer/appeals")}
-    className="px-4 py-2 rounded-lg bg-blue-600/20 text-blue-300 hover:bg-blue-600/30 border border-blue-500/30 transition"
-  >
-    View Appeals
-  </button>
+            {/* LOGOUT BUTTON */}
+            <button
+              onClick={logout}
+              className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-sm font-semibold transition shadow-md"
+            >
+              Sign Out
+            </button>
 
-  {/* LOGOUT BUTTON */}
-  <button
-    onClick={logout}
-    className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 transition"
-  >
-    Sign Out
-  </button>
-
-</div>
+          </div>
         </div>
       </header>
 
       <main className="max-w-[1600px] mx-auto p-4 md:p-8">
 
         {/* Classroom Information */}
-
         <section className="bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-blue-500/20 rounded-2xl p-5 mb-7">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
 
@@ -871,7 +777,6 @@ export default function LecturerDashboard() {
         </section>
 
         {/* Summary Cards */}
-
         <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 mb-7">
           <SummaryCard
             title="Total Students"
@@ -906,7 +811,6 @@ export default function LecturerDashboard() {
         </section>
 
         {/* Overall Class Performance */}
-
         <section className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-7">
           <PerformanceCard
             title="Class Overall Score"
@@ -930,7 +834,6 @@ export default function LecturerDashboard() {
         </section>
 
         {/* Risk Alert */}
-
         {riskyStudents.length > 0 && (
           <section className="bg-red-500/10 border border-red-500/30 rounded-2xl p-5 mb-7 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-start gap-4">
@@ -962,7 +865,6 @@ export default function LecturerDashboard() {
         )}
 
         {/* Actions */}
-
         <section className="flex flex-col lg:flex-row justify-between gap-4 mb-7">
           <div className="flex flex-col sm:flex-row gap-3 flex-1">
             <input
@@ -1014,11 +916,9 @@ export default function LecturerDashboard() {
         </section>
 
         {/* Analytics */}
-
         <section className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-7">
 
           {/* Attendance and Behavior Chart */}
-
           <div className="bg-[#0b2236] border border-white/10 rounded-2xl p-5">
             <div className="mb-5">
               <h2 className="text-xl font-bold">
@@ -1092,7 +992,6 @@ export default function LecturerDashboard() {
           </div>
 
           {/* Behavior Distribution */}
-
           <div className="bg-[#0b2236] border border-white/10 rounded-2xl p-5">
             <div className="mb-5">
               <h2 className="text-xl font-bold">
@@ -1142,7 +1041,6 @@ export default function LecturerDashboard() {
         </section>
 
         {/* Risk Distribution */}
-
         <section className="bg-[#0b2236] border border-white/10 rounded-2xl p-5 mb-7">
           <div className="mb-5">
             <h2 className="text-xl font-bold">
@@ -1188,7 +1086,6 @@ export default function LecturerDashboard() {
         </section>
 
         {/* Student Table */}
-
         <section className="bg-[#0b2236] border border-white/10 rounded-2xl overflow-hidden">
           <div className="p-5 border-b border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
@@ -1206,37 +1103,14 @@ export default function LecturerDashboard() {
             <table className="w-full min-w-[900px]">
               <thead className="bg-[#091d30]">
                 <tr className="text-left text-gray-300">
-                  <th className="p-4 text-center">
-                    Rank
-                  </th>
-
-                  <th className="p-4">
-                    Student
-                  </th>
-
-                  <th className="p-4">
-                    Intake
-                  </th>
-
-                  <th className="p-4 text-center">
-                    Attendance
-                  </th>
-
-                  <th className="p-4 text-center">
-                    Behavior
-                  </th>
-
-                  <th className="p-4 text-center">
-                    Overall
-                  </th>
-
-                  <th className="p-4 text-center">
-                    Status
-                  </th>
-
-                  <th className="p-4 text-center">
-                    Action
-                  </th>
+                  <th className="p-4 text-center">Rank</th>
+                  <th className="p-4">Student</th>
+                  <th className="p-4">Intake</th>
+                  <th className="p-4 text-center">Attendance</th>
+                  <th className="p-4 text-center">Behavior</th>
+                  <th className="p-4 text-center">Overall</th>
+                  <th className="p-4 text-center">Status</th>
+                  <th className="p-4 text-center">Action</th>
                 </tr>
               </thead>
 
@@ -1327,7 +1201,6 @@ export default function LecturerDashboard() {
       </main>
 
       {/* Student Detail Modal */}
-
       {selected && (
         <div
           className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 p-4"

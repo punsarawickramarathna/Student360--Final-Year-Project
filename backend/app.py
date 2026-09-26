@@ -19,6 +19,7 @@ from routes.profile import router as profile_router
 from routes.users import router as users_router
 from routes.register import router as register_router
 from routes.model_routes import router as model_router
+from routes.process_video import router as process_video_router
 
 app = FastAPI(title="Student360 Backend")
 
@@ -47,7 +48,7 @@ app.include_router(profile_router)
 app.include_router(users_router, prefix="/api/users", tags=["Users"])
 app.include_router(register_router)
 app.include_router(model_router, prefix="/api/model", tags=["Model"])
-
+app.include_router(process_video_router, prefix="/api/ai-engine", tags=["AI Engine"])
 
 
 @app.get("/")

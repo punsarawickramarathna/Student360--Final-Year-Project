@@ -27,6 +27,7 @@ import ChangePassword from "./pages/student/ChangePassword";
 import LecturerDashboard from "./pages/lecturer/Dashboard";
 import LecturerAppeals from "./pages/lecturer/Appeals";
 import ClassroomSelect from "./pages/lecturer/ClassroomSelect";
+import LiveMonitoring from "./pages/lecturer/LiveMonitoring";
 
 // Admin pages
 import AdminDashboard from "./pages/admin/Dashboard";
@@ -42,6 +43,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        {/* Default route */}
         <Route path="/" element={<Navigate to="/roles" replace />} />
         <Route path="/roles" element={<RoleSelection />} />
         <Route path="/login" element={<Login />} />
@@ -58,11 +60,11 @@ export default function App() {
         <Route path="/lecturer/dashboard" element={<RequireAuth allowedRoles={["lecturer"]}><LecturerDashboard /></RequireAuth>} />
         <Route path="/lecturer/appeals" element={<RequireAuth allowedRoles={["lecturer"]}><LecturerAppeals /></RequireAuth>} />
         <Route path="/lecturer/classroom" element={<RequireAuth allowedRoles={["lecturer"]}><ClassroomSelect /></RequireAuth>} />
+        {/* LIVE AI MONITORING ROUTE ADDED HERE */}
+        <Route path="/lecturer/monitoring" element={<RequireAuth allowedRoles={["lecturer"]}><LiveMonitoring /></RequireAuth>} />
 
         {/* Admin routes */}
-        {/* FIX: Add this redirect so /admin goes to /admin/dashboard automatically */}
         <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
-        
         <Route path="/admin/dashboard" element={<RequireAuth allowedRoles={["admin"]}><AdminDashboard /></RequireAuth>} />
         <Route path="/admin/add-user" element={<RequireAuth allowedRoles={["admin"]}><AddUser /></RequireAuth>} />
 
