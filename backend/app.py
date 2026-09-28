@@ -50,7 +50,7 @@ app.include_router(register_router)
 app.include_router(users_router, prefix="/api/users", tags=["Users"])
 app.include_router(model_router, prefix="/api/model", tags=["Model"])
 
-# Appeals Routes - Frontend එක මොන URL එකෙන් ඇහුවත් වැඩ කරන විදිහට:
+# Appeals Routes
 app.include_router(appeals_router, prefix="/api/appeals", tags=["Appeals API"])
 app.include_router(appeals_router, prefix="/appeals", tags=["Appeals Direct"])
 
