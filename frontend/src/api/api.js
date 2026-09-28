@@ -314,3 +314,24 @@ export const getImageURL = (photoPath) => {
 
   return `${API}/${cleanPath}`;
 };
+
+// Appeals ඔක්කොම ගන්න Function එක
+export const getAllAppeals = async () => {
+  const response = await fetch(`${API}/appeals/all`, {
+    headers: getAuthHeaders(),
+  });
+  return handleResponse(response);
+};
+
+// Admin Response එක යවන Function එක
+export const respondToAppeal = async (appealId, body) => {
+  const response = await fetch(`${API}/appeals/${appealId}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+    },
+    body: JSON.stringify(body),
+  });
+  return handleResponse(response);
+};

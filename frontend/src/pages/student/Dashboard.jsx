@@ -1137,78 +1137,75 @@ export default function StudentDashboard() {
 
         {/* Appeals */}
 
-        <section className="bg-[#0b2236] border border-white/10 rounded-2xl p-5 mt-7">
-
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
-
+        {/* Appeals & Admin Remarks Section */}
+        <section className="bg-[#0b2236] border border-white/10 rounded-2xl p-6 mt-7 shadow-xl">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-gray-700/60">
             <div>
-
-              <h2 className="text-xl font-bold">
-                My Appeals
+              <h2 className="text-xl font-bold flex items-center gap-2 text-white">
+                <span>📜</span> My Appeals & Admin Responses
               </h2>
-
               <p className="text-gray-400 text-sm mt-1">
-                Track your submitted appeals
+                Track your submitted appeals and official feedback from administration.
               </p>
-
             </div>
 
             <button
-              onClick={() =>
-                navigate("/student/appeal/new")
-              }
-              className="bg-blue-600 hover:bg-blue-700 px-5 py-2.5 rounded-xl font-semibold transition"
+              onClick={() => navigate("/student/appeal/new")}
+              className="bg-blue-600 hover:bg-blue-700 px-5 py-2.5 rounded-xl font-semibold transition text-sm flex items-center gap-2 self-start sm:self-auto"
             >
-              New Appeal
+              <span>➕</span> New Appeal
             </button>
-
           </div>
 
           {myAppeals.length === 0 ? (
             <EmptyState
               icon="📨"
-              message="No appeals submitted."
+              message="No appeals submitted yet."
             />
           ) : (
             <div className="space-y-4">
-
               {myAppeals.map((item, index) => (
                 <div
                   key={item._id || index}
-                  className="bg-[#071828] border border-white/10 rounded-xl p-5"
+                  className="bg-[#071828] border border-white/10 rounded-2xl p-5 hover:border-gray-600 transition duration-200"
                 >
-
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-800 pb-3 mb-3">
                     <div>
-
-                      <p className="font-semibold">
-                        {item.type ||
-                          "Student Appeal"}
+                      <span className="text-xs font-mono text-blue-400 font-semibold">
+                        Submitted Date: {item.date || item.created_at?.substring(0, 10) || "N/A"}
+                      </span>
+                      <h3 className="text-base font-bold text-white mt-1">
+                        {item.type || item.reason || "Student Appeal"}
+                      </h3>
+                      <p className="text-gray-300 text-sm mt-1">
+                        "{item.message || item.description || "No description provided."}"
                       </p>
-
-                      <p className="text-gray-400 text-sm mt-2">
-                        {item.message ||
-                          item.description ||
-                          "No message provided."}
-                      </p>
-
                     </div>
 
-                    <AppealStatus
-                      status={
-                        item.status || "Pending"
-                      }
-                    />
-
+                    <div className="self-start sm:self-center">
+                      <AppealStatus status={item.status || "Pending"} />
+                    </div>
                   </div>
 
+                  {/* Admin Official Remark Box */}
+                  {item.admin_response ? (
+                    <div className="bg-[#0f2438] border border-blue-500/30 rounded-xl p-3.5 text-xs mt-3">
+                      <div className="flex items-center gap-1.5 text-blue-400 font-bold mb-1 text-sm">
+                        <span>💬 Admin Remarks ({item.reviewed_by || "System Admin"}):</span>
+                      </div>
+                      <p className="text-gray-200 italic text-sm leading-relaxed">
+                        "{item.admin_response}"
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-gray-400 italic flex items-center gap-1.5 mt-2">
+                      <span>⏳</span> Pending official administrative review and remarks...
+                    </div>
+                  )}
                 </div>
               ))}
-
             </div>
           )}
-
         </section>
 
         {/* Overall Recommendation */}

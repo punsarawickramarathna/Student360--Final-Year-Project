@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
 
 import {
   getStudents,
@@ -38,6 +39,26 @@ const CHART_COLORS = {
 };
 
 export default function LecturerDashboard() {
+
+  // Appeals States
+  const [appealsList, setAppealsList] = useState([]);
+  const [loadingAppeals, setLoadingAppeals] = useState(true);
+
+  useEffect(() => {
+    const fetchAppeals = async () => {
+      try {
+        const res = await axios.get("http://localhost:8000/api/appeals");
+        const data = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+        setAppealsList(data);
+      } catch (err) {
+        console.error("Error fetching appeals:", err);
+      } finally {
+        setLoadingAppeals(false);
+      }
+    };
+    fetchAppeals();
+  }, []);
+
   const navigate = useNavigate();
 
   const classroom = useMemo(() => {
@@ -1323,6 +1344,77 @@ export default function LecturerDashboard() {
               </tbody>
             </table>
           </div>
+        </section>
+        {/* Lecturer Student Appeals View-Only Section */}
+        <section className="bg-[#0b2236] border border-white/10 rounded-2xl p-6 mt-7 shadow-xl">
+          <div className="flex justify-between items-center pb-4 mb-6 border-b border-gray-700">
+            <div>
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <span>📜</span> Student Appeals Status Log
+              </h2>
+              <p className="text-gray-400 text-sm mt-1">
+                Monitor student submitted appeals and administrative review statuses.
+              </p>
+            </div>
+            <span className="bg-blue-500/10 text-blue-400 border border-blue-500/30 text-xs font-bold px-3 py-1.5 rounded-full">
+              {appealsList?.length || 0} Total Appeals
+            </span>
+          </div>
+
+          {loadingAppeals ? (
+            <div className="text-center py-8 text-gray-400 text-sm">
+              ⏳ Loading student appeals...
+            </div>
+          ) : !appealsList || appealsList.length === 0 ? (
+            <div className="text-center py-8 text-gray-400 text-sm bg-[#071828] rounded-xl border border-dashed border-gray-700">
+              No student appeals recorded yet.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-gray-700 text-xs font-semibold text-gray-400 uppercase bg-[#071828]">
+                    <th className="py-3 px-4">Student ID</th>
+                    <th className="py-3 px-4">Reason / Appeal</th>
+                    <th className="py-3 px-4">Submitted Date</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4">Admin Remarks</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-800 text-sm">
+                  {appealsList.map((appeal, index) => (
+                    <tr key={appeal._id || index} className="hover:bg-[#0f2438]">
+                      <td className="py-4 px-4 font-mono font-bold text-blue-400">
+                        {appeal.student_id || appeal.user_id || "N/A"}
+                      </td>
+                      <td className="py-4 px-4 text-gray-200 max-w-xs">
+                        {appeal.reason || appeal.message || appeal.description}
+                      </td>
+                      <td className="py-4 px-4 text-gray-400 text-xs">
+                        {appeal.date || appeal.created_at?.substring(0, 10) || "N/A"}
+                      </td>
+                      <td className="py-4 px-4">
+                        <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${
+                          appeal.status === "Approved" ? "bg-green-500/10 text-green-400 border-green-500/30" :
+                          appeal.status === "Rejected" ? "bg-red-500/10 text-red-400 border-red-500/30" :
+                          "bg-yellow-500/10 text-yellow-400 border-yellow-500/30"
+                        }`}>
+                          {appeal.status || "Pending"}
+                        </span>
+                      </td>
+                      <td className="py-4 px-4 text-xs italic text-gray-300">
+                        {appeal.admin_response ? (
+                          <span className="text-gray-300">"{appeal.admin_response}"</span>
+                        ) : (
+                          <span className="text-gray-500">Pending review...</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
       </main>
 

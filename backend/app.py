@@ -30,11 +30,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Base Routers
 app.include_router(auth_router)
 app.include_router(students_router)
 app.include_router(attendance_router)
 app.include_router(behavior_router)
-app.include_router(appeals_router)
 app.include_router(upload_session_router)
 app.include_router(dashboard_router)
 app.include_router(process_router)
@@ -44,10 +44,15 @@ app.include_router(timeline_router)
 app.include_router(sessions_router)
 app.include_router(email_router)
 app.include_router(profile_router)
-app.include_router(users_router, prefix="/api/users", tags=["Users"])
 app.include_router(register_router)
+
+# Routers with API Prefixes
+app.include_router(users_router, prefix="/api/users", tags=["Users"])
 app.include_router(model_router, prefix="/api/model", tags=["Model"])
 
+# Appeals Routes - Frontend එක මොන URL එකෙන් ඇහුවත් වැඩ කරන විදිහට:
+app.include_router(appeals_router, prefix="/api/appeals", tags=["Appeals API"])
+app.include_router(appeals_router, prefix="/appeals", tags=["Appeals Direct"])
 
 
 @app.get("/")
