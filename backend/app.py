@@ -37,7 +37,12 @@ app.include_router(attendance_router)
 app.include_router(behavior_router)
 app.include_router(upload_session_router)
 app.include_router(dashboard_router)
-app.include_router(process_router)
+# Student360 AI Engine Routes
+app.include_router(
+    process_router,
+    prefix="/api/ai-engine",
+    tags=["AI Engine"]
+)
 app.include_router(upload_router)
 app.include_router(evidence_router)
 app.include_router(timeline_router)
