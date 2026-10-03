@@ -38,14 +38,14 @@ export default function Navbar() {
             {role === "lecturer" && (
               <>
                 <Link to="/lecturer/dashboard" className="nav-link">Lecturer</Link>
-                <Link to="/lecturer/classes" className="nav-link">Classes</Link>
+                
               </>
             )}
 
             {role === "admin" && (
               <>
                 <Link to="/admin/dashboard" className="nav-link">Admin</Link>
-                <Link to="/admin/users" className="nav-link">Users</Link>
+                
               </>
             )}
           </div>

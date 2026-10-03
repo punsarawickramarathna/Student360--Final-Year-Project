@@ -142,13 +142,28 @@ export default function LecturerDashboard() {
           getSessions(),
         ]);
 
-      const studentData = getArrayData(studentResponse);
+      const rawStudentData = getArrayData(studentResponse);
       const attendanceData = getArrayData(attendanceResponse);
       const behaviorData = getArrayData(behaviorResponse);
       const totalSessions = getSessionCount(sessionResponse);
 
       setAttendance(attendanceData);
       setBehavior(behaviorData);
+
+      // --- FILTER STUDENTS BASED ON SELECTED CLASSROOM ---
+      const studentData = rawStudentData.filter((student) => {
+        if (!classroom.year && !classroom.group) return true; // Classroom Select කරලා නැත්නම් ඔක්කොම පෙන්නන්න
+
+        const sYear = String(student.academic_year || student.year || "").replace("Year ", "").trim();
+        const sSem = String(student.semester || student.sem || "").replace("Semester ", "").trim();
+        const sGroup = String(student.group || "").replace("Group ", "").trim();
+
+        const matchYear = !classroom.year || sYear === String(classroom.year);
+        const matchSem = !classroom.sem || sSem === String(classroom.sem);
+        const matchGroup = !classroom.group || sGroup === String(classroom.group);
+
+        return matchYear && matchSem && matchGroup;
+      });
 
       const calculatedStudents = studentData.map((student) => {
         const studentId = student.student_id || student.id || "";
@@ -780,17 +795,17 @@ export default function LecturerDashboard() {
             <div className="flex flex-wrap gap-3 text-sm">
               <ClassroomBadge
                 label="Year"
-                value={classroom.year || "N/A"}
+                value={classroom.year ? `Year ${classroom.year}` : "N/A"}
               />
 
               <ClassroomBadge
                 label="Semester"
-                value={classroom.sem || "N/A"}
+                value={classroom.sem ? `Semester ${classroom.sem}` : "N/A"}
               />
 
               <ClassroomBadge
                 label="Group"
-                value={classroom.group || "N/A"}
+                value={classroom.group ? `Group ${classroom.group}` : "N/A"}
               />
             </div>
           </div>
@@ -801,7 +816,7 @@ export default function LecturerDashboard() {
           <SummaryCard
             title="Total Students"
             value={students.length}
-            subtitle="Registered students"
+            subtitle="Registered in this class"
             icon="👥"
           />
 
@@ -1007,7 +1022,7 @@ export default function LecturerDashboard() {
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <EmptyChart message="No performance data available." />
+              <EmptyChart message="No performance data available for this classroom." />
             )}
           </div>
 
@@ -1101,7 +1116,7 @@ export default function LecturerDashboard() {
               </PieChart>
             </ResponsiveContainer>
           ) : (
-            <EmptyChart message="No student data available." />
+            <EmptyChart message="No student data available for this classroom." />
           )}
         </section>
 
@@ -1210,7 +1225,7 @@ export default function LecturerDashboard() {
                       colSpan="8"
                       className="p-12 text-center text-gray-400"
                     >
-                      No students match your search or filter.
+                      No students found in this classroom match your search or filter.
                     </td>
                   </tr>
                 )}
@@ -1218,6 +1233,7 @@ export default function LecturerDashboard() {
             </table>
           </div>
         </section>
+
         {/* Lecturer Student Appeals View-Only Section */}
         <section className="bg-[#0b2236] border border-white/10 rounded-2xl p-6 mt-7 shadow-xl">
           <div className="flex justify-between items-center pb-4 mb-6 border-b border-gray-700">

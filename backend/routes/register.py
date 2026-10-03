@@ -1,7 +1,8 @@
 import os
 import shutil
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
-from database import db, users_collection, students_collection # db import karagannawa
+from database import db, users_collection, students_collection
+from auth import hash_password  # <-- Password hash කිරීම සඳහා import කරන ලදී
 from datetime import datetime
 
 router = APIRouter()
@@ -22,6 +23,9 @@ async def register_student(
     email: str = Form(...),
     department: str = Form(...),
     intake: str = Form(...),
+    academic_year: str = Form("1"),
+    semester: str = Form("1"),
+    group: str = Form("A"),
     password: str = Form(...),
     video: UploadFile = File(...)
 ):
@@ -44,6 +48,9 @@ async def register_student(
             "email": email.strip(),
             "department": department.strip(),
             "intake": intake.strip(),
+            "academic_year": academic_year.strip(),
+            "semester": semester.strip(),
+            "group": group.strip(),
             "role": "student",
             "video_path": video_path,
             "is_model_trained": False,
@@ -51,12 +58,17 @@ async def register_student(
         }
         students_collection.insert_one(student_data)
         
+        # users_collection එකට hashed password එක සහ student_id/user_id දෙකම ඇතුළත් කිරීම
         users_collection.insert_one({
+            "student_id": student_id.strip(),
             "user_id": student_id.strip(),
             "email": email.strip(),
-            "password": password,
+            "password": hash_password(password.strip()),  # Hashed Password
             "role": "student",
-            "name": name.strip()
+            "name": name.strip(),
+            "intake": intake.strip(),
+            "department": department.strip(),
+            "account_status": "active"
         })
 
         return {"status": "success", "message": f"Student {name} registered & AI training video uploaded successfully!"}
@@ -66,7 +78,7 @@ async def register_student(
 
 
 # ==========================================
-# 2. LECTURER REGISTRATION API (NEW!)
+# 2. LECTURER REGISTRATION API
 # ==========================================
 @router.post("/api/admin/register-lecturer")
 async def register_lecturer(
@@ -89,8 +101,8 @@ async def register_lecturer(
             "email": email.strip(),
             "faculty": faculty.strip(),
             "gender": gender.strip(),
-            "employment_type": employment_type.strip(), # Permanent or Visiting
-            "subjects": [s.strip() for s in subjects.split(",") if s.strip()], # Array of subjects
+            "employment_type": employment_type.strip(),
+            "subjects": [s.strip() for s in subjects.split(",") if s.strip()],
             "role": "lecturer",
             "registered_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
@@ -98,8 +110,9 @@ async def register_lecturer(
 
         users_collection.insert_one({
             "user_id": lec_id.strip(),
+            "student_id": lec_id.strip(),
             "email": email.strip(),
-            "password": password,
+            "password": hash_password(password.strip()),  # Hashed Password
             "role": "lecturer",
             "name": name.strip()
         })
