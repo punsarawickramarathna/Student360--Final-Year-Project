@@ -432,250 +432,154 @@ def generate_video_stream():
                     verbose=False
                 )
 
-            # Prevent duplicate duration updates
+# ==========================================
+            # AI BOUNDING BOX PARSING & SPATIAL FUSION
+            # ==========================================
+
+            raw_boxes = []
+            for result in results:
+                if result.boxes is None:
+                    continue
+                for box in result.boxes:
+                    coords = list(map(int, box.xyxy[0].tolist()))
+                    cls_id = int(box.cls[0])
+                    raw_label = yolo.names[cls_id] if cls_id in yolo.names else "person"
+                    t_id = int(box.id[0]) if box.id is not None else None
+                    conf = float(box.conf[0])
+                    raw_boxes.append({
+                        "box": coords,
+                        "label": normalize_behavior(raw_label),
+                        "orig_label": raw_label,
+                        "track_id": t_id,
+                        "conf": conf
+                    })
+
+            # Separate Persons and Specific Behavioral Anomaly cues
+            persons = []
+            anomalies = []
+
+            for b in raw_boxes:
+                # Phone use, sleeping, cheating anomalies
+                if b["label"] in ["phone_use", "phone", "using_phone", "sleeping", "sleep", "cheating", "malpractice"]:
+                    anomalies.append(b)
+                else:
+                    persons.append(b)
+
+            # Spatial Matching: If an anomaly box overlaps with a person, assign the anomaly to that person!
+            for p in persons:
+                px1, py1, px2, py2 = p["box"]
+                p_area = (px2 - px1) * (py2 - py1)
+
+                for a in anomalies:
+                    ax1, ay1, ax2, ay2 = a["box"]
+                    # Calculate intersection box
+                    ix1 = max(px1, ax1)
+                    iy1 = max(py1, ay1)
+                    ix2 = min(px2, ax2)
+                    iy2 = min(py2, ay2)
+
+                    if ix2 > ix1 and iy2 > iy1:
+                        inter_area = (ix2 - ix1) * (iy2 - iy1)
+                        a_area = (ax2 - ax1) * (ay2 - ay1)
+                        # If anomaly is overlapping significantly with person or nearby
+                        if inter_area / float(a_area) > 0.15 or inter_area / float(p_area) > 0.05:
+                            p["label"] = a["label"]
+                            p["orig_label"] = a["orig_label"]
+
+            # If YOLO detected only the phone/sleeping cue without full body, treat that anomaly as a person candidate
+            if not persons and anomalies:
+                persons = anomalies
+
             updated_students = set()
 
-            for result in results:
+            # Now render and track ONLY consolidated person entities
+            for p in persons:
+                x1, y1, x2, y2 = p["box"]
+                behavior_label = p["orig_label"]
+                normalized_label = p["label"]
+                track_id = p["track_id"]
 
-                boxes = result.boxes
+                is_alert = normalized_label in [
+                    "cheating", "malpractice", "sleeping", "sleep", "phone_use", "phone", "using_phone"
+                ]
 
-                if boxes is None:
-                    continue
+                student_id = "Unknown"
+                confidence_str = ""
 
-                for box in boxes:
-
-                    x1, y1, x2, y2 = map(
-                        int,
-                        box.xyxy[0].tolist()
-                    )
-
-                    cls_id = int(box.cls[0])
-
-                    behavior_label = (
-                        yolo.names[cls_id]
-                        if cls_id in yolo.names
-                        else "person"
-                    )
-
-                    normalized_label = normalize_behavior(
-                        behavior_label
-                    )
-
-                    is_alert = normalized_label in [
-                        "cheating",
-                        "malpractice",
-                        "sleeping",
-                        "sleep",
-                        "phone_use",
-                        "phone",
-                        "using_phone"
-                    ]
-
-                    track_id = (
-                        int(box.id[0])
-                        if box.id is not None
-                        else None
-                    )
-
-                    student_id = "Unknown"
-
-                    confidence_str = ""
-
-                    # ==================================
-                    # FACE RECOGNITION
-                    # ==================================
-
+                # 1. Identity Memory Retrieval (ByteTrack Persistence)
+                if track_id is not None and track_id in tracker_to_student_map:
+                    student_id = tracker_to_student_map[track_id]
+                else:
+                    # Run FaceNet Recognition
+                    person_crop = frame[max(0, y1):max(0, y2), max(0, x1):max(0, x2)]
                     if (
-                        track_id is not None
-                        and track_id in tracker_to_student_map
+                        person_crop.size > 0
+                        and person_crop.shape[0] >= 20
+                        and person_crop.shape[1] >= 20
+                        and detector is not None
+                        and embedder is not None
+                        and face_svm is not None
+                        and label_encoder is not None
                     ):
+                        rgb = cv2.cvtColor(person_crop, cv2.COLOR_BGR2RGB)
+                        try:
+                            faces = detector.detect_faces(rgb)
+                        except Exception:
+                            faces = []
 
-                        student_id = tracker_to_student_map[
-                            track_id
-                        ]
+                        if faces:
+                            fx, fy, fw, fh = faces[0]["box"]
+                            fx, fy = max(0, fx), max(0, fy)
+                            face_img = rgb[fy:fy + fh, fx:fx + fw]
 
-                    else:
+                            if face_img.shape[0] >= 20 and face_img.shape[1] >= 20:
+                                try:
+                                    face_resized = cv2.resize(face_img, (160, 160))
+                                    embedding = embedder.embeddings([face_resized])
+                                    probs = face_svm.predict_proba(embedding)
+                                    confidence = float(np.max(probs))
+                                    pred = int(np.argmax(probs))
 
-                        person_crop = frame[
-                            max(0, y1):max(0, y2),
-                            max(0, x1):max(0, x2)
-                        ]
+                                    THRESHOLD = 0.50
+                                    if confidence >= THRESHOLD:
+                                        student_id = str(label_encoder.inverse_transform([pred])[0])
+                                        confidence_str = f"({confidence:.2f})"
+                                        if track_id is not None:
+                                            tracker_to_student_map[track_id] = student_id
+                                            print(f"🎯 LOCKED Track [T{track_id}] -> {student_id}")
+                                except Exception as e:
+                                    print("FACE RECOGNITION ERROR:", repr(e))
 
-                        if (
-                            person_crop.size > 0
-                            and person_crop.shape[0] >= 20
-                            and person_crop.shape[1] >= 20
-                            and detector is not None
-                            and embedder is not None
-                            and face_svm is not None
-                            and label_encoder is not None
-                        ):
+                # Update Student Analytics & Evidence
+                if student_id != "Unknown":
+                    if student_id not in updated_students:
+                        update_student_statistics(
+                            student_id,
+                            behavior_label,
+                            current_time,
+                            timestamp
+                        )
+                        updated_students.add(student_id)
 
-                            rgb = cv2.cvtColor(
-                                person_crop,
-                                cv2.COLOR_BGR2RGB
-                            )
+                    if is_alert:
+                        save_evidence(
+                            student_id,
+                            behavior_label,
+                            frame.copy()
+                        )
 
-                            try:
+                # Draw Clean Bounding Box
+                box_color = (0, 0, 255) if is_alert else (0, 255, 0)
+                cv2.rectangle(frame, (x1, y1), (x2, y2), box_color, 2)
 
-                                faces = detector.detect_faces(rgb)
+                track_text = f"[T{track_id}] " if track_id is not None else ""
+                label_text = f"{track_text}{student_id} {confidence_str} | {behavior_label}"
 
-                            except Exception as e:
-
-                                print("FACE DETECTION ERROR:", repr(e))
-
-                                faces = []
-
-                            if faces:
-
-                                fx, fy, fw, fh = faces[0]["box"]
-
-                                fx = max(0, fx)
-                                fy = max(0, fy)
-
-                                face_img = rgb[
-                                    fy:fy + fh,
-                                    fx:fx + fw
-                                ]
-
-                                if (
-                                    face_img.shape[0] >= 20
-                                    and face_img.shape[1] >= 20
-                                ):
-
-                                    try:
-
-                                        face_resized = cv2.resize(
-                                            face_img,
-                                            (160, 160)
-                                        )
-
-                                        embedding = embedder.embeddings(
-                                            [face_resized]
-                                        )
-
-                                        probs = face_svm.predict_proba(
-                                            embedding
-                                        )
-
-                                        confidence = float(
-                                            np.max(probs)
-                                        )
-
-                                        pred = int(
-                                            np.argmax(probs)
-                                        )
-
-                                        THRESHOLD = 0.70
-
-                                        if confidence >= THRESHOLD:
-
-                                            student_id = str(
-                                                label_encoder.inverse_transform(
-                                                    [pred]
-                                                )[0]
-                                            )
-
-                                            confidence_str = (
-                                                f"({confidence:.2f})"
-                                            )
-
-                                            if track_id is not None:
-
-                                                tracker_to_student_map[
-                                                    track_id
-                                                ] = student_id
-
-                                    except Exception as e:
-
-                                        print(
-                                            "FACE RECOGNITION ERROR:",
-                                            repr(e)
-                                        )
-
-                    # ==================================
-                    # STUDENT STATISTICS
-                    # ==================================
-
-                    if student_id != "Unknown":
-
-                        if student_id not in updated_students:
-
-                            update_student_statistics(
-                                student_id,
-                                behavior_label,
-                                current_time,
-                                timestamp
-                            )
-
-                            updated_students.add(student_id)
-
-                        # ==============================
-                        # EVIDENCE
-                        # ==============================
-
-                        if is_alert:
-
-                            save_evidence(
-                                student_id,
-                                behavior_label,
-                                frame.copy()
-                            )
-
-                    # ==================================
-                    # DRAW BOUNDING BOX
-                    # ==================================
-
-                    box_color = (
-                        (0, 0, 255)
-                        if is_alert
-                        else (0, 255, 0)
-                    )
-
-                    cv2.rectangle(
-                        frame,
-                        (x1, y1),
-                        (x2, y2),
-                        box_color,
-                        2
-                    )
-
-                    track_text = (
-                        f"[T{track_id}] "
-                        if track_id is not None
-                        else ""
-                    )
-
-                    label_text = (
-                        f"{track_text}{student_id} "
-                        f"{confidence_str} | {behavior_label}"
-                    )
-
-                    (w, h), _ = cv2.getTextSize(
-                        label_text,
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.55,
-                        2
-                    )
-
-                    cv2.rectangle(
-                        frame,
-                        (x1, max(0, y1 - 25)),
-                        (x1 + w + 10, max(0, y1)),
-                        box_color,
-                        -1
-                    )
-
-                    cv2.putText(
-                        frame,
-                        label_text,
-                        (x1 + 5, max(0, y1 - 7)),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.55,
-                        (255, 255, 255),
-                        2
-                    )
-
+                (w, h), _ = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 2)
+                cv2.rectangle(frame, (x1, max(0, y1 - 25)), (x1 + w + 10, max(0, y1)), box_color, -1)
+                cv2.putText(frame, label_text, (x1 + 5, max(0, y1 - 7)), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2)
+                
+                
             # ==========================================
             # ENCODE FRAME
             # ==========================================
