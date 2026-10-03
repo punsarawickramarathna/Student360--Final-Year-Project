@@ -1242,3 +1242,19 @@ async def process_video(file: UploadFile = File(...)):
             status_code=500,
             detail=f"Video processing failed: {str(e)}"
         )
+        
+
+# ============================================================
+# HOT-RELOAD TRAINED FACE RECOGNITION MODELS
+# ============================================================
+
+def reload_face_models():
+    """Reloads the updated face recognition model into runtime memory."""
+    global face_svm, label_encoder, active_ai_session
+    try:
+        face_svm = joblib.load(resolve_model_file("face_model.pkl"))
+        label_encoder = joblib.load(resolve_model_file("label_encoder.pkl"))
+        active_ai_session["tracker_to_student_map"] = {}
+        print("✅ Reloaded latest face recognition models into runtime successfully.")
+    except Exception as e:
+        print("⚠️ Failed to reload face models:", repr(e))
