@@ -6,9 +6,17 @@ export default function AddUser() {
   // Tab State: 'student' or 'lecturer'
   const [activeTab, setActiveTab] = useState("student");
 
-  // Student Form State
+  // Student Form State (Academic Year, Semester, Group එකතු කර ඇත)
   const [studentData, setStudentData] = useState({
-    student_id: "", name: "", email: "", department: "IT", intake: "", password: ""
+    student_id: "", 
+    name: "", 
+    email: "", 
+    department: "IT", 
+    intake: "", 
+    academic_year: "1", 
+    semester: "1", 
+    group: "A", 
+    password: ""
   });
   const [videoFile, setVideoFile] = useState(null);
   const [videoPreview, setVideoPreview] = useState(null);
@@ -25,7 +33,17 @@ export default function AddUser() {
   // CLEAR FORMS FUNCTION
   // ==========================================
   const handleClear = () => {
-    setStudentData({ student_id: "", name: "", email: "", department: "IT", intake: "", password: "" });
+    setStudentData({ 
+      student_id: "", 
+      name: "", 
+      email: "", 
+      department: "IT", 
+      intake: "", 
+      academic_year: "1", 
+      semester: "1", 
+      group: "A", 
+      password: "" 
+    });
     setVideoFile(null);
     setVideoPreview(null);
     if (document.getElementById("videoInput")) document.getElementById("videoInput").value = "";
@@ -239,6 +257,48 @@ export default function AddUser() {
                     onChange={(e) => setStudentData({ ...studentData, password: e.target.value })}
                     className="w-full bg-[#0f172a] border border-gray-600 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition"
                   />
+                </div>
+              </div>
+
+              {/* Classroom Allocation Fields (Lecturer selection එකට ගැලපෙන ලෙස එකතු කරන ලදී) */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
+                <div>
+                  <label className="block text-xs font-bold uppercase text-gray-300 mb-2">Academic Year *</label>
+                  <select
+                    value={studentData.academic_year}
+                    onChange={(e) => setStudentData({ ...studentData, academic_year: e.target.value })}
+                    className="w-full bg-[#0f172a] border border-gray-600 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition"
+                  >
+                    <option value="1">Year 1</option>
+                    <option value="2">Year 2</option>
+                    <option value="3">Year 3</option>
+                    <option value="4">Year 4</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase text-gray-300 mb-2">Semester *</label>
+                  <select
+                    value={studentData.semester}
+                    onChange={(e) => setStudentData({ ...studentData, semester: e.target.value })}
+                    className="w-full bg-[#0f172a] border border-gray-600 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition"
+                  >
+                    <option value="1">Semester 1</option>
+                    <option value="2">Semester 2</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase text-gray-300 mb-2">Student Group *</label>
+                  <select
+                    value={studentData.group}
+                    onChange={(e) => setStudentData({ ...studentData, group: e.target.value })}
+                    className="w-full bg-[#0f172a] border border-gray-600 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition"
+                  >
+                    <option value="A">Group A</option>
+                    <option value="B">Group B</option>
+                    <option value="C">Group C</option>
+                  </select>
                 </div>
               </div>
 
