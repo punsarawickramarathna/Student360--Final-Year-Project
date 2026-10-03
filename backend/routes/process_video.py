@@ -610,18 +610,6 @@ def generate_video_stream():
 
                             updated_students.add(student_id)
 
-                        # ==============================
-                        # EVIDENCE
-                        # ==============================
-
-                        if is_alert:
-
-                            save_evidence(
-                                student_id,
-                                behavior_label,
-                                frame.copy()
-                            )
-
                     # ==================================
                     # DRAW BOUNDING BOX
                     # ==================================
@@ -675,6 +663,16 @@ def generate_video_stream():
                         (255, 255, 255),
                         2
                     )
+
+                    # Save evidence AFTER drawing the box and label.
+                    # This stores the annotated frame rather than the raw camera frame.
+                    if student_id != "Unknown" and is_alert:
+
+                        save_evidence(
+                            student_id,
+                            behavior_label,
+                            frame.copy()
+                        )
 
             # ==========================================
             # ENCODE FRAME
