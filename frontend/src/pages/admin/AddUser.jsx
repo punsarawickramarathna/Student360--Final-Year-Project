@@ -78,11 +78,17 @@ export default function AddUser() {
         headers: { "Content-Type": "multipart/form-data" }
       });
 
-      setMessage({ type: "success", text: res.data.message });
-      setTimeout(() => {
+      setMessage({
+        type: "success",
+        text:
+            `${res.data.message} ` +
+            `Student ID: ${res.data.student_id}. ` +
+            `The face model is now being trained automatically.`
+    });
+
+    setTimeout(() => {
         handleClear();
-        window.location.reload(); // Auto refresh after success
-      }, 1500);
+    }, 2500);
 
     } catch (err) {
       setMessage({ type: "error", text: err.response?.data?.detail || "Error registering student!" });
