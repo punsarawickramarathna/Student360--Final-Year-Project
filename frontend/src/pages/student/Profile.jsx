@@ -1,5 +1,9 @@
-import { useEffect, useState } from "react";
+// src/pages/student/Profile.jsx
+
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+
+import Navbar from "../../components/Navbar";
 
 import {
   getMyProfile,
@@ -18,51 +22,49 @@ export default function Profile() {
   }, []);
 
   const loadProfile = async () => {
-  try {
-    setLoading(true);
-    setError("");
+    try {
+      setLoading(true);
+      setError("");
 
-    const result = await getMyProfile();
+      const result = await getMyProfile();
+      const profileData = result.user || result;
 
-    const profileData = result.user || result;
+      setProfile(profileData);
 
-    setProfile(profileData);
+      const oldUser = JSON.parse(
+        localStorage.getItem("user") || "{}"
+      );
 
-    const oldUser = JSON.parse(
-      localStorage.getItem("user") || "{}"
-    );
+      localStorage.setItem(
+        "user",
+        JSON.stringify({
+          ...oldUser,
+          ...profileData,
+          role:
+            profileData.role ||
+            oldUser.role ||
+            "student",
+        })
+      );
+    } catch (err) {
+      console.error("Profile load error:", err);
 
-    localStorage.setItem(
-      "user",
-      JSON.stringify({
-        ...oldUser,
-        ...profileData,
-        role:
-          profileData.role ||
-          oldUser.role ||
-          "student",
-      })
-    );
-  } catch (err) {
-    console.error("Profile load error:", err);
-
-    setError(
-      err?.response?.data?.detail ||
+      setError(
+        err?.response?.data?.detail ||
         err?.message ||
         "Unable to load profile."
-    );
-  } finally {
-    setLoading(false);
-  }
-};
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#020817] flex items-center justify-center">
-        <div className="flex items-center gap-3 text-white">
-          <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-
-          <span>Loading profile...</span>
+      <div className="min-h-screen bg-[#030c18] flex items-center justify-center text-white">
+        <div className="flex items-center gap-3 bg-[#081526] border border-slate-800 px-6 py-4 rounded-2xl shadow-xl">
+          <div className="w-5 h-5 border-2 border-slate-600 border-t-blue-500 rounded-full animate-spin" />
+          <span className="font-semibold text-sm text-slate-300">Loading student profile...</span>
         </div>
       </div>
     );
@@ -70,19 +72,14 @@ export default function Profile() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-[#020817] flex items-center justify-center px-4">
-        <div className="max-w-md w-full bg-[#0b2236] border border-red-500/30 rounded-2xl p-6 text-center">
-          <h2 className="text-xl font-semibold text-white">
-            Unable to Load Profile
-          </h2>
-
-          <p className="text-red-300 mt-3">
-            {error}
-          </p>
-
+      <div className="min-h-screen bg-[#030c18] flex items-center justify-center px-4">
+        <div className="max-w-md w-full bg-[#081526] border border-rose-500/30 shadow-2xl rounded-2xl p-6 text-center text-white">
+          <div className="text-4xl mb-2">⚠️</div>
+          <h2 className="text-lg font-bold">Unable to Load Profile</h2>
+          <p className="text-rose-400 text-sm mt-2">{error}</p>
           <button
             onClick={loadProfile}
-            className="mt-5 px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition"
+            className="mt-5 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-sm transition"
           >
             Try Again
           </button>
@@ -96,188 +93,178 @@ export default function Profile() {
   }
 
   return (
-    <div className="min-h-screen bg-[#020817] text-white px-4 py-10">
-      <div className="max-w-5xl mx-auto">
+    <div className="min-h-screen bg-[#030c18] text-slate-100 selection:bg-blue-600 selection:text-white pb-14">
+      <Navbar />
 
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 pt-7 space-y-6">
 
-          <div>
-            <h1 className="text-3xl font-bold">
-              My Profile
-            </h1>
+        {/* Top Header Card */}
+        <section className="bg-[#081526] border border-slate-800 rounded-2xl p-6 shadow-xl relative overflow-hidden">
+          <div className="absolute top-0 right-10 w-64 h-32 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
 
-            <p className="text-gray-400 mt-1">
-              View your personal and academic information
-            </p>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 relative z-10">
+            <div>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 mb-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                <span className="text-xs font-bold uppercase tracking-wider text-blue-400">
+                  Account Verification
+                </span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
+                Student <span className="bg-gradient-to-r from-blue-400 via-sky-300 to-teal-300 bg-clip-text text-transparent">Profile</span>
+              </h1>
+              <p className="text-xs text-slate-400 mt-1">
+                Verified personal, institutional and academic credentials
+              </p>
+            </div>
+
+            <button
+              onClick={() => navigate("/student/dashboard")}
+              className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 font-bold text-xs rounded-xl shadow-sm transition self-start sm:self-auto"
+            >
+              ← Back to Dashboard
+            </button>
           </div>
+        </section>
 
-          <button
-            onClick={() =>
-              navigate("/student/dashboard")
-            }
-            className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl transition"
-          >
-            ← Dashboard
-          </button>
-
-        </div>
-
+        {/* Profile Content Grid */}
         <div className="grid lg:grid-cols-3 gap-6">
 
-          <div className="bg-[#0b2236] border border-white/10 rounded-2xl p-6 h-fit">
-
+          {/* Left Avatar / Account Status Card */}
+          <div className="bg-[#081526] border border-slate-800 rounded-2xl p-6 shadow-xl h-fit">
             <div className="flex flex-col items-center text-center">
-
               {profile.photo ? (
                 <img
                   src={getImageURL(profile.photo)}
                   alt="Profile"
-                  className="w-36 h-36 rounded-full object-cover border-4 border-blue-500/40 shadow-xl"
+                  className="w-32 h-32 rounded-full object-cover border-4 border-slate-800 shadow-2xl"
                 />
               ) : (
-                <div className="w-36 h-36 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-5xl font-bold shadow-xl">
+                <div className="w-32 h-32 rounded-full bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-700 flex items-center justify-center text-4xl font-black text-white shadow-xl shadow-blue-900/30">
                   {profile.name
-                    ? profile.name
-                        .charAt(0)
-                        .toUpperCase()
+                    ? profile.name.charAt(0).toUpperCase()
                     : "S"}
                 </div>
               )}
 
-              <h2 className="text-2xl font-bold mt-5">
+              <h2 className="text-xl font-black text-white mt-4 tracking-tight">
                 {profile.name || "Student"}
               </h2>
 
-              <p className="text-blue-300 mt-1">
+              <p className="text-xs font-mono font-semibold text-sky-400 bg-slate-900 px-3 py-1 rounded-md border border-slate-800 mt-2">
                 {profile.student_id}
               </p>
 
-              <span className="mt-4 px-4 py-1.5 rounded-full bg-green-500/10 border border-green-500/30 text-green-300 text-sm capitalize">
-                {profile.account_status || "active"}
+              <span className="mt-3 px-3 py-1 rounded-full bg-emerald-950/60 border border-emerald-500/30 text-emerald-400 text-xs font-bold capitalize">
+                ● {profile.account_status || "Active Student"}
               </span>
-
             </div>
 
-            <div className="mt-6 space-y-3">
-
+            <div className="mt-6 space-y-2.5 pt-5 border-t border-slate-800">
               <button
-                onClick={() =>
-                  navigate("/student/edit-profile")
-                }
-                className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 hover:opacity-90 transition font-semibold"
+                onClick={() => navigate("/student/edit-profile")}
+                className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-lg shadow-blue-600/30 hover:scale-[1.01] active:scale-[0.99] transition"
               >
                 Edit Profile
               </button>
 
               <button
-                onClick={() =>
-                  navigate("/student/change-password")
-                }
-                className="w-full py-3 rounded-xl bg-white/10 hover:bg-white/20 transition"
+                onClick={() => navigate("/student/change-password")}
+                className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 font-semibold text-xs transition"
               >
                 Change Password
               </button>
-
             </div>
-
           </div>
 
+          {/* Right Academic & Contact Sections */}
           <div className="lg:col-span-2 space-y-6">
 
-            <section className="bg-[#0b2236] border border-white/10 rounded-2xl p-6">
+            {/* Academic Information */}
+            <section className="bg-[#081526] border border-slate-800 rounded-2xl p-6 shadow-xl">
+              <div className="flex items-center gap-2 mb-4 pb-3 border-b border-slate-800">
+                <span className="text-lg">🎓</span>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                  Academic Credentials
+                </h3>
+              </div>
 
-              <h3 className="text-xl font-semibold mb-5">
-                Academic Information
-              </h3>
-
-              <div className="grid md:grid-cols-2 gap-4">
-
+              <div className="grid md:grid-cols-2 gap-3.5">
                 <ProfileItem
                   label="Student ID"
                   value={profile.student_id}
                 />
-
                 <ProfileItem
                   label="Intake"
                   value={profile.intake}
                 />
-
                 <ProfileItem
                   label="Department"
                   value={profile.department}
                 />
-
                 <ProfileItem
                   label="Academic Year"
                   value={profile.year}
                 />
-
                 <ProfileItem
-                  label="Role"
+                  label="Enrolled Role"
                   value={profile.role}
                 />
-
                 <ProfileItem
-                  label="Account Status"
+                  label="Status"
                   value={profile.account_status}
                 />
-
               </div>
-
             </section>
 
-            <section className="bg-[#0b2236] border border-white/10 rounded-2xl p-6">
+            {/* Contact Information */}
+            <section className="bg-[#081526] border border-slate-800 rounded-2xl p-6 shadow-xl">
+              <div className="flex items-center gap-2 mb-4 pb-3 border-b border-slate-800">
+                <span className="text-lg">📬</span>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                  Contact Information
+                </h3>
+              </div>
 
-              <h3 className="text-xl font-semibold mb-5">
-                Contact Information
-              </h3>
-
-              <div className="grid md:grid-cols-2 gap-4">
-
+              <div className="grid md:grid-cols-2 gap-3.5">
                 <ProfileItem
-                  label="Email Address"
+                  label="Campus Email Address"
                   value={profile.email}
                 />
-
                 <ProfileItem
                   label="Phone Number"
                   value={profile.phone}
                 />
-
                 <div className="md:col-span-2">
                   <ProfileItem
-                    label="Address"
+                    label="Registered Address"
                     value={profile.address}
                   />
                 </div>
-
               </div>
-
             </section>
 
+            {/* Password Change Alert */}
             {profile.must_change_password && (
-              <section className="bg-yellow-500/10 border border-yellow-500/30 rounded-2xl p-5">
-
-                <h3 className="text-yellow-200 font-semibold">
-                  Password Change Required
-                </h3>
-
-                <p className="text-yellow-100/70 mt-2">
-                  Your account is using a temporary password.
-                  Please create a new secure password.
-                </p>
-
-                <button
-                  onClick={() =>
-                    navigate(
-                      "/student/change-password"
-                    )
-                  }
-                  className="mt-4 px-5 py-2.5 bg-yellow-500 text-black rounded-xl font-semibold hover:bg-yellow-400 transition"
-                >
-                  Change Password
-                </button>
-
+              <section className="bg-amber-950/40 border border-amber-500/30 rounded-2xl p-5 shadow-xl">
+                <div className="flex items-start gap-3">
+                  <span className="text-2xl">⚠️</span>
+                  <div>
+                    <h3 className="text-amber-400 font-bold text-sm">
+                      Password Change Required
+                    </h3>
+                    <p className="text-slate-300 text-xs mt-1 leading-relaxed">
+                      Your account is currently using a temporary system password.
+                      Please create a new secure password to safeguard your credentials.
+                    </p>
+                    <button
+                      onClick={() => navigate("/student/change-password")}
+                      className="mt-3 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-md transition"
+                    >
+                      Change Password
+                    </button>
+                  </div>
+                </div>
               </section>
             )}
 
@@ -285,19 +272,18 @@ export default function Profile() {
 
         </div>
 
-      </div>
+      </main>
     </div>
   );
 }
 
 function ProfileItem({ label, value }) {
   return (
-    <div className="bg-[#071828] border border-white/10 rounded-xl p-4">
-      <p className="text-sm text-gray-400">
+    <div className="bg-[#0c1a2c] border border-slate-800 rounded-xl p-3.5">
+      <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
         {label}
       </p>
-
-      <p className="text-white font-medium mt-2 break-words capitalize">
+      <p className="text-white font-semibold text-sm mt-1 break-words capitalize">
         {value || "Not provided"}
       </p>
     </div>

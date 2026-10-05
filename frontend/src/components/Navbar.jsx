@@ -1,87 +1,147 @@
 // src/components/Navbar.jsx
+
 import React from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 
 export default function Navbar() {
   const navigate = useNavigate();
-  const userJson = localStorage.getItem("user");
-  const user = userJson ? JSON.parse(userJson) : null;
-  const role = user?.role || "student";
+  const location = useLocation();
 
-  function signOut() {
+  const user = (() => {
+    try {
+      return JSON.parse(localStorage.getItem("user")) || {};
+    } catch {
+      return {};
+    }
+  })();
+
+  const role = String(user?.role || localStorage.getItem("selectedRole") || "student").toLowerCase();
+  const isAdmin = role === "admin";
+  const isLecturer = role === "lecturer" || role === "faculty";
+
+  const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
+    localStorage.removeItem("classroom");
+    localStorage.removeItem("selectedRole");
     navigate("/login");
-  }
+  };
+
+  const isActive = (path) => location.pathname === path;
 
   return (
-    <div className="w-full bg-[#071829] border-b border-[#122236]">
-      <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-4">
+    <header className="bg-slate-200/90 border-b border-slate-300/80 sticky top-0 z-50 transition-all shadow-sm">
+      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+
+        {/* Brand Logo & Title */}
+        <div className="flex items-center gap-6">
           <Link
-            to={role === "student" ? "/student/dashboard" : role === "lecturer" ? "/lecturer/dashboard" : "/admin/dashboard"}
-            className="text-2xl font-bold text-white"
+            to={
+              isAdmin
+                ? "/admin/dashboard"
+                : isLecturer
+                  ? "/lecturer/dashboard"
+                  : "/student/dashboard"
+            }
+            className="flex items-center gap-3.5 group"
           >
-            Student360
+            <img
+              src="/assets/horizon-logo.png"
+              alt="Horizon Logo"
+              className="h-10 w-auto object-contain shrink-0 transition-transform group-hover:scale-105"
+              onError={(e) => {
+                e.currentTarget.style.display = "none";
+              }}
+            />
+            <span className="text-xl font-black tracking-tight text-slate-900 leading-none">
+              Student<span className="text-blue-600">360</span>
+            </span>
           </Link>
 
-          {/* role-specific nav links */}
-          <div className="hidden md:flex items-center gap-4 text-sm">
-            {role === "student" && (
+          {/* Navigation Links */}
+          <nav className="hidden md:flex items-center gap-1.5 text-sm font-semibold">
+            {isAdmin ? (
               <>
-                <Link to="/student/dashboard" className="nav-link">Dashboard</Link>
-                <Link to="/student/appeals" className="nav-link">My Appeals</Link>
-                <Link to="/student/profile" className="nav-link">Profile</Link>
+                <Link
+                  to="/admin/dashboard"
+                  className={`px-3.5 py-1.5 rounded-lg transition ${isActive("/admin/dashboard")
+                      ? "text-blue-600 bg-white shadow-xs"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-300/50"
+                    }`}
+                >
+                  Dashboard Overview
+                </Link>
+                <Link
+                  to="/admin/users"
+                  className={`px-3.5 py-1.5 rounded-lg transition ${isActive("/admin/users")
+                      ? "text-blue-600 bg-white shadow-xs"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-300/50"
+                    }`}
+                >
+                  User Management
+                </Link>
+              </>
+            ) : isLecturer ? (
+              <>
+                <Link
+                  to="/lecturer/dashboard"
+                  className={`px-3.5 py-1.5 rounded-lg transition ${isActive("/lecturer/dashboard")
+                      ? "text-blue-600 bg-white shadow-xs"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-300/50"
+                    }`}
+                >
+                  Class Analytics
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link
+                  to="/student/dashboard"
+                  className={`px-3.5 py-1.5 rounded-lg transition ${isActive("/student/dashboard")
+                      ? "text-blue-600 bg-white shadow-xs"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-300/50"
+                    }`}
+                >
+                  Dashboard
+                </Link>
+                <Link
+                  to="/student/appeals"
+                  className={`px-3.5 py-1.5 rounded-lg transition ${isActive("/student/appeals")
+                      ? "text-blue-600 bg-white shadow-xs"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-300/50"
+                    }`}
+                >
+                  My Appeals
+                </Link>
+                <Link
+                  to="/student/profile"
+                  className={`px-3.5 py-1.5 rounded-lg transition ${isActive("/student/profile")
+                      ? "text-blue-600 bg-white shadow-xs"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-300/50"
+                    }`}
+                >
+                  Profile
+                </Link>
               </>
             )}
-
-            {role === "lecturer" && (
-              <>
-                <Link to="/lecturer/dashboard" className="nav-link">Lecturer</Link>
-                
-              </>
-            )}
-
-            {role === "admin" && (
-              <>
-                <Link to="/admin/dashboard" className="nav-link">Admin</Link>
-                
-              </>
-            )}
-          </div>
+          </nav>
         </div>
 
-        <div className="flex items-center gap-4">
-          {user && (
-            <div className="text-right mr-2 hidden sm:block">
-              <div className="text-sm text-gray-300">Hello</div>
-              <div className="font-semibold text-white">{user.name}</div>
-              <div className="text-xs text-[var(--muted)]">{user.regNo}</div>
-            </div>
-          )}
+        {/* Right Actions: Clean Tag & Sign Out */}
+        <div className="flex items-center gap-3">
+          <span className="hidden sm:inline-block text-[11px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-300 px-2.5 py-0.5 rounded-full">
+            {isAdmin ? "Admin" : isLecturer ? "LECTURER" : "Student"}
+          </span>
 
           <button
-            onClick={signOut}
-            className="px-3 py-1 text-sm rounded-md bg-gradient-to-r from-[var(--accent-from)] to-[var(--accent-to)] shadow-md hover:scale-105 transition-transform"
+            onClick={handleLogout}
+            className="px-3.5 py-1.5 rounded-lg border border-slate-300 hover:border-rose-300 text-slate-700 hover:text-rose-600 hover:bg-rose-50 text-xs font-semibold transition shadow-xs"
           >
             Sign out
           </button>
         </div>
-      </div>
 
-      {/* small CSS-in-Tailwind nav link style (applies to .nav-link) */}
-      <style>{`
-        .nav-link {
-          color: #cfe6ff;
-          padding: 6px 10px;
-          border-radius: 8px;
-          transition: background 0.18s, transform 0.12s;
-        }
-        .nav-link:hover {
-          background: rgba(255,255,255,0.03);
-          transform: translateY(-2px);
-        }
-      `}</style>
-    </div>
+      </div>
+    </header>
   );
 }

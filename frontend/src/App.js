@@ -30,7 +30,9 @@ import ClassroomSelect from "./pages/lecturer/ClassroomSelect";
 import LiveMonitoring from "./pages/lecturer/LiveMonitoring";
 
 // Admin pages
+// Admin pages
 import AdminDashboard from "./pages/admin/Dashboard";
+import AdminUsers from "./pages/admin/AdminUsers";
 import AddUser from "./pages/admin/AddUser";
 
 export default function App() {
@@ -64,8 +66,10 @@ export default function App() {
         <Route path="/lecturer/monitoring" element={<RequireAuth allowedRoles={["lecturer"]}><LiveMonitoring /></RequireAuth>} />
 
         {/* Admin routes */}
+
         <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
         <Route path="/admin/dashboard" element={<RequireAuth allowedRoles={["admin"]}><AdminDashboard /></RequireAuth>} />
+        <Route path="/admin/users" element={<RequireAuth allowedRoles={["admin"]}><AdminUsers /></RequireAuth>} />
         <Route path="/admin/add-user" element={<RequireAuth allowedRoles={["admin"]}><AddUser /></RequireAuth>} />
 
         {/* 404 route */}
