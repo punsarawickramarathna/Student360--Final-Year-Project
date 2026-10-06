@@ -81,30 +81,22 @@ export default function AppealForm({ onSubmitted }) {
 
       <div className="max-w-3xl mx-auto p-4 sm:p-8">
         
-        {/* Back Button & Header */}
-        <div className="mb-6 flex items-center justify-between">
-          <button
-            onClick={() => navigate("/student/dashboard")}
-            className="text-sm text-gray-400 hover:text-white flex items-center gap-2 transition"
-          >
-            ← Back to Dashboard
-          </button>
-          
-          <span className="text-xs bg-blue-500/10 border border-blue-500/20 text-blue-400 px-3 py-1 rounded-full font-medium">
-            Student Support Portal
-          </span>
-        </div>
-
         {/* Form Card */}
         <div className="bg-[#0b2236] border border-white/10 rounded-2xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl">
           
-          <div className="mb-6 border-b border-white/10 pb-4">
-            <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-              📝 Submit New Appeal
-            </h1>
-            <p className="text-gray-400 text-sm mt-1">
-              Submit your academic complaints or marks re-evaluation requests directly to the faculty.
-            </p>
+          <div className="mb-6 border-b border-white/10 pb-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+                📝 Submit New Appeal
+              </h1>
+              <p className="text-gray-400 text-sm mt-1">
+                Submit your academic complaints or marks re-evaluation requests directly to the faculty.
+              </p>
+            </div>
+
+            <span className="text-xs bg-blue-500/10 border border-blue-500/20 text-blue-400 px-3 py-1 rounded-full font-medium shrink-0">
+              Student Support Portal
+            </span>
           </div>
 
           <form className="space-y-6" onSubmit={handleSubmit}>

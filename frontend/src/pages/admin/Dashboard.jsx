@@ -323,7 +323,13 @@ export default function AdminDashboard() {
                   {appealsList.map((appeal, index) => (
                     <tr key={appeal._id || index} className="hover:bg-[#0b1324]/50 transition duration-150">
                       <td className="py-4 px-4 font-mono font-bold text-blue-400">{appeal.student_id}</td>
-                      <td className="py-4 px-4 font-semibold text-white">{appeal.name || "Student"}</td>
+                      <td className="py-4 px-4 font-semibold text-white">
+                        {(appeal.name && appeal.name.toLowerCase() !== "student")
+                          ? appeal.name
+                          : (appeal.student_name && appeal.student_name.toLowerCase() !== "student")
+                            ? appeal.student_name
+                            : (appeal.student?.name || appeal.student?.student_name || appeal.student_id || "Student")}
+                      </td>
                       <td className="py-4 px-4 text-gray-400 text-xs">
                         {appeal.date || appeal.created_at?.substring(0, 10) || "N/A"}
                       </td>
@@ -385,7 +391,17 @@ export default function AdminDashboard() {
             </h3>
 
             <div className="bg-[#0b1324] p-3 rounded-lg text-xs text-gray-300 mb-4 border border-gray-800">
-              <p className="font-semibold text-blue-400 mb-1">Student ID: {selectedAppeal.student_id}</p>
+              <p className="font-semibold text-blue-400 mb-1">
+                Student ID: {selectedAppeal.student_id}
+                {((selectedAppeal.name && selectedAppeal.name.toLowerCase() !== "student") ||
+                  (selectedAppeal.student_name && selectedAppeal.student_name.toLowerCase() !== "student")) && (
+                  <span className="text-gray-300 font-normal ml-2">
+                    ({(selectedAppeal.name && selectedAppeal.name.toLowerCase() !== "student")
+                      ? selectedAppeal.name
+                      : selectedAppeal.student_name})
+                  </span>
+                )}
+              </p>
               <p>"{selectedAppeal.reason || selectedAppeal.message}"</p>
             </div>
 

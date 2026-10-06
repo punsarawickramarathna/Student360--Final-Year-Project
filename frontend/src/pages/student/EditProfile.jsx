@@ -17,6 +17,8 @@ export default function EditProfile() {
   const [intake, setIntake] = useState("");
   const [department, setDepartment] = useState("");
   const [year, setYear] = useState("");
+  const [semester, setSemester] = useState("");
+  const [group, setGroup] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
@@ -36,170 +38,141 @@ export default function EditProfile() {
   }, []);
 
   const loadProfile = async () => {
-  try {
-    setLoading(true);
-    setError("");
+    try {
+      setLoading(true);
+      setError("");
 
-    const result = await getMyProfile();
+      const result = await getMyProfile();
+      const profileData = result.user || result;
 
-    const profileData = result.user || result;
+      setName(profileData.name || "");
+      setStudentId(profileData.student_id || "");
+      setIntake(profileData.intake || "");
+      setDepartment(profileData.department || "");
+      setYear(profileData.year || profileData.academic_year || "");
+      setSemester(profileData.semester || profileData.sem || "");
+      setGroup(profileData.group || "");
+      setEmail(profileData.email || "");
+      setPhone(profileData.phone || "");
+      setAddress(profileData.address || "");
+      setPhoto(profileData.photo || "");
 
-    setName(profileData.name || "");
-    setStudentId(profileData.student_id || "");
-    setIntake(profileData.intake || "");
-    setDepartment(profileData.department || "");
-    setYear(profileData.year || "");
-    setEmail(profileData.email || "");
-    setPhone(profileData.phone || "");
-    setAddress(profileData.address || "");
-    setPhoto(profileData.photo || "");
+      const oldUser = JSON.parse(localStorage.getItem("user") || "{}");
 
-    const oldUser = JSON.parse(
-      localStorage.getItem("user") || "{}"
-    );
-
-    localStorage.setItem(
-      "user",
-      JSON.stringify({
-        ...oldUser,
-        ...profileData,
-        role:
-          profileData.role ||
-          oldUser.role ||
-          "student",
-      })
-    );
-  } catch (err) {
-    console.error("Profile load error:", err);
-
-    setError(
-      err?.response?.data?.detail ||
+      localStorage.setItem(
+        "user",
+        JSON.stringify({
+          ...oldUser,
+          ...profileData,
+          role: profileData.role || oldUser.role || "student",
+        })
+      );
+    } catch (err) {
+      console.error("Profile load error:", err);
+      setError(
+        err?.response?.data?.detail ||
         err?.message ||
         "Unable to load profile."
-    );
-  } finally {
-    setLoading(false);
-  }
-};
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleUpdate = async () => {
-  try {
-    setSaving(true);
-    setMessage("");
-    setError("");
+    try {
+      setSaving(true);
+      setMessage("");
+      setError("");
 
-    const result = await updateMyProfile({
-      name,
-      department,
-      year,
-      email,
-      phone,
-      address,
-    });
+      const result = await updateMyProfile({
+        name,
+        year,
+        semester,
+        group,
+        phone,
+        address,
+      });
 
-    const updatedProfile = result.user || result;
+      const updatedProfile = result.user || result;
 
-    setName(updatedProfile.name || name);
-    setDepartment(
-      updatedProfile.department || department
-    );
-    setYear(updatedProfile.year || year);
-    setEmail(updatedProfile.email || email);
-    setPhone(updatedProfile.phone || phone);
-    setAddress(updatedProfile.address || address);
+      setName(updatedProfile.name || name);
+      setYear(updatedProfile.year || year);
+      setSemester(updatedProfile.semester || semester);
+      setGroup(updatedProfile.group || group);
+      setPhone(updatedProfile.phone || phone);
+      setAddress(updatedProfile.address || address);
 
-    const oldUser = JSON.parse(
-      localStorage.getItem("user") || "{}"
-    );
+      const oldUser = JSON.parse(localStorage.getItem("user") || "{}");
 
-    localStorage.setItem(
-      "user",
-      JSON.stringify({
-        ...oldUser,
-        ...updatedProfile,
-        role:
-          updatedProfile.role ||
-          oldUser.role ||
-          "student",
-      })
-    );
+      localStorage.setItem(
+        "user",
+        JSON.stringify({
+          ...oldUser,
+          ...updatedProfile,
+          role: updatedProfile.role || oldUser.role || "student",
+        })
+      );
 
-    setMessage("Profile updated successfully.");
+      setMessage("Profile updated successfully.");
 
-    setTimeout(() => {
-      navigate("/student/profile");
-    }, 1000);
-  } catch (err) {
-    console.error("Profile update error:", err);
-
-    setError(
-      err?.response?.data?.detail ||
+      setTimeout(() => {
+        navigate("/student/profile");
+      }, 1000);
+    } catch (err) {
+      console.error("Profile update error:", err);
+      setError(
+        err?.response?.data?.detail ||
         err?.message ||
         "Profile update failed."
-    );
-  } finally {
-    setSaving(false);
-  }
-};
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handlePhotoUpload = async () => {
-  if (!selectedFile) {
-    setError("Please select an image.");
-    return;
-  }
+    if (!selectedFile) {
+      setError("Please select an image.");
+      return;
+    }
 
-  try {
-    setUploading(true);
-    setMessage("");
-    setError("");
+    try {
+      setUploading(true);
+      setMessage("");
+      setError("");
 
-    const result = await uploadProfileImage(
-      selectedFile
-    );
+      const result = await uploadProfileImage(selectedFile);
+      const uploadedPhoto =
+        result.user?.photo || result.photo || result.file_path || "";
 
-    const uploadedPhoto =
-      result.user?.photo ||
-      result.photo ||
-      result.file_path ||
-      "";
+      setPhoto(uploadedPhoto);
 
-    setPhoto(uploadedPhoto);
+      const oldUser = JSON.parse(localStorage.getItem("user") || "{}");
 
-    const oldUser = JSON.parse(
-      localStorage.getItem("user") || "{}"
-    );
+      const updatedUser = {
+        ...oldUser,
+        ...(result.user || {}),
+        photo: uploadedPhoto,
+        role: result.user?.role || oldUser.role || "student",
+      };
 
-    const updatedUser = {
-      ...oldUser,
-      ...(result.user || {}),
-      photo: uploadedPhoto,
-      role:
-        result.user?.role ||
-        oldUser.role ||
-        "student",
-    };
+      localStorage.setItem("user", JSON.stringify(updatedUser));
+      setSelectedFile(null);
+      setMessage("Profile photo uploaded successfully.");
 
-    localStorage.setItem(
-      "user",
-      JSON.stringify(updatedUser)
-    );
-
-    setSelectedFile(null);
-    setMessage("Profile photo uploaded successfully.");
-
-    await loadProfile();
-  } catch (err) {
-    console.error("Photo upload error:", err);
-
-    setError(
-      err?.response?.data?.detail ||
+      await loadProfile();
+    } catch (err) {
+      console.error("Photo upload error:", err);
+      setError(
+        err?.response?.data?.detail ||
         err?.message ||
         "Photo upload failed."
-    );
-  } finally {
-    setUploading(false);
-  }
-};
+      );
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const handleDeletePhoto = async () => {
     try {
@@ -208,14 +181,10 @@ export default function EditProfile() {
       setError("");
 
       const result = await deleteProfileImage();
-
       setPhoto("");
 
       if (result.user) {
-        localStorage.setItem(
-          "user",
-          JSON.stringify(result.user)
-        );
+        localStorage.setItem("user", JSON.stringify(result.user));
       } else {
         await loadProfile();
       }
@@ -224,8 +193,8 @@ export default function EditProfile() {
     } catch (err) {
       setError(
         err?.response?.data?.detail ||
-          err?.message ||
-          "Unable to remove profile photo."
+        err?.message ||
+        "Unable to remove profile photo."
       );
     } finally {
       setUploading(false);
@@ -235,9 +204,7 @@ export default function EditProfile() {
   if (loading) {
     return (
       <div className="min-h-screen bg-[#020817] flex items-center justify-center">
-        <div className="text-white text-lg">
-          Loading profile...
-        </div>
+        <div className="text-white text-lg">Loading profile...</div>
       </div>
     );
   }
@@ -245,13 +212,9 @@ export default function EditProfile() {
   return (
     <div className="min-h-screen bg-[#020817] text-white px-4 py-10">
       <div className="max-w-4xl mx-auto">
-
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-3xl font-bold">
-              Edit Profile
-            </h1>
-
+            <h1 className="text-3xl font-bold">Edit Profile</h1>
             <p className="text-gray-400 mt-1">
               Update your personal information and profile photo
             </p>
@@ -278,12 +241,9 @@ export default function EditProfile() {
         )}
 
         <div className="grid lg:grid-cols-3 gap-6">
-
           {/* Profile Photo */}
           <div className="bg-[#0b2236] border border-white/10 rounded-2xl p-6 h-fit">
-            <h2 className="text-xl font-semibold mb-5">
-              Profile Photo
-            </h2>
+            <h2 className="text-xl font-semibold mb-5">Profile Photo</h2>
 
             <div className="flex justify-center mb-5">
               {photo ? (
@@ -294,9 +254,7 @@ export default function EditProfile() {
                 />
               ) : (
                 <div className="w-36 h-36 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-5xl font-bold">
-                  {name
-                    ? name.charAt(0).toUpperCase()
-                    : "S"}
+                  {name ? name.charAt(0).toUpperCase() : "S"}
                 </div>
               )}
             </div>
@@ -304,9 +262,7 @@ export default function EditProfile() {
             <input
               type="file"
               accept="image/jpeg,image/png,image/webp"
-              onChange={(event) =>
-                setSelectedFile(event.target.files[0])
-              }
+              onChange={(event) => setSelectedFile(event.target.files[0])}
               className="w-full text-sm text-gray-300 mb-4 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-blue-600 file:text-white"
             />
 
@@ -315,9 +271,7 @@ export default function EditProfile() {
               disabled={uploading || !selectedFile}
               className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
             >
-              {uploading
-                ? "Uploading..."
-                : "Upload Photo"}
+              {uploading ? "Uploading..." : "Upload Photo"}
             </button>
 
             {photo && (
@@ -333,12 +287,9 @@ export default function EditProfile() {
 
           {/* Profile Form */}
           <div className="lg:col-span-2 bg-[#0b2236] border border-white/10 rounded-2xl p-6">
-            <h2 className="text-xl font-semibold mb-6">
-              Personal Information
-            </h2>
+            <h2 className="text-xl font-semibold mb-6">Personal Information</h2>
 
             <div className="grid md:grid-cols-2 gap-5">
-
               <InputField
                 label="Student ID"
                 value={studentId}
@@ -352,16 +303,22 @@ export default function EditProfile() {
               />
 
               <InputField
-                label="Full Name"
-                value={name}
-                onChange={setName}
+                label="Email"
+                type="email"
+                value={email}
+                disabled
               />
 
               <InputField
                 label="Department"
                 value={department}
-                onChange={setDepartment}
-                placeholder="Example: Information Technology"
+                disabled
+              />
+
+              <InputField
+                label="Full Name"
+                value={name}
+                onChange={setName}
               />
 
               <InputField
@@ -372,11 +329,17 @@ export default function EditProfile() {
               />
 
               <InputField
-                label="Email"
-                type="email"
-                value={email}
-                onChange={setEmail}
-                placeholder="student@email.com"
+                label="Semester"
+                value={semester}
+                onChange={setSemester}
+                placeholder="Example: Semester 1"
+              />
+
+              <InputField
+                label="Group"
+                value={group}
+                onChange={setGroup}
+                placeholder="Example: Group A"
               />
 
               <InputField
@@ -387,17 +350,12 @@ export default function EditProfile() {
               />
 
               <div className="md:col-span-2">
-                <label className="block text-sm text-gray-300 mb-2">
-                  Address
-                </label>
-
+                <label className="block text-sm text-gray-300 mb-2">Address</label>
                 <textarea
                   value={address}
-                  onChange={(event) =>
-                    setAddress(event.target.value)
-                  }
+                  onChange={(event) => setAddress(event.target.value)}
                   placeholder="Enter your address"
-                  rows="4"
+                  rows="3"
                   className="w-full p-3 rounded-xl bg-[#071828] border border-white/10 text-white outline-none focus:border-blue-500 resize-none"
                 />
               </div>
@@ -409,22 +367,17 @@ export default function EditProfile() {
                 disabled={saving}
                 className="flex-1 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 hover:opacity-90 disabled:opacity-50 transition font-semibold"
               >
-                {saving
-                  ? "Saving..."
-                  : "Save Changes"}
+                {saving ? "Saving..." : "Save Changes"}
               </button>
 
               <button
-                onClick={() =>
-                  navigate("/student/change-password")
-                }
+                onClick={() => navigate("/student/change-password")}
                 className="flex-1 py-3 rounded-xl bg-white/10 hover:bg-white/20 transition"
               >
                 Change Password
               </button>
             </div>
           </div>
-
         </div>
       </div>
     </div>
@@ -441,23 +394,17 @@ function InputField({
 }) {
   return (
     <div>
-      <label className="block text-sm text-gray-300 mb-2">
-        {label}
-      </label>
-
+      <label className="block text-sm text-gray-300 mb-2">{label}</label>
       <input
         type={type}
         value={value}
         placeholder={placeholder}
         disabled={disabled}
-        onChange={(event) =>
-          onChange && onChange(event.target.value)
-        }
-        className={`w-full p-3 rounded-xl border outline-none transition ${
-          disabled
+        onChange={(event) => onChange && onChange(event.target.value)}
+        className={`w-full p-3 rounded-xl border outline-none transition ${disabled
             ? "bg-white/5 border-white/5 text-gray-500 cursor-not-allowed"
             : "bg-[#071828] border-white/10 text-white focus:border-blue-500"
-        }`}
+          }`}
       />
     </div>
   );

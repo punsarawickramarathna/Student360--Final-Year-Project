@@ -102,28 +102,19 @@ export default function Profile() {
         <section className="bg-[#081526] border border-slate-800 rounded-2xl p-6 shadow-xl relative overflow-hidden">
           <div className="absolute top-0 right-10 w-64 h-32 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
 
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 relative z-10">
-            <div>
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 mb-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-                <span className="text-xs font-bold uppercase tracking-wider text-blue-400">
-                  Account Verification
-                </span>
-              </div>
-              <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
-                Student <span className="bg-gradient-to-r from-blue-400 via-sky-300 to-teal-300 bg-clip-text text-transparent">Profile</span>
-              </h1>
-              <p className="text-xs text-slate-400 mt-1">
-                Verified personal, institutional and academic credentials
-              </p>
+          <div className="relative z-10">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 mb-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+              <span className="text-xs font-bold uppercase tracking-wider text-blue-400">
+                Account Verification
+              </span>
             </div>
-
-            <button
-              onClick={() => navigate("/student/dashboard")}
-              className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 font-bold text-xs rounded-xl shadow-sm transition self-start sm:self-auto"
-            >
-              ← Back to Dashboard
-            </button>
+            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
+              Student <span className="bg-gradient-to-r from-blue-400 via-sky-300 to-teal-300 bg-clip-text text-transparent">Profile</span>
+            </h1>
+            <p className="text-xs text-slate-400 mt-1">
+              Verified personal, institutional and academic credentials
+            </p>
           </div>
         </section>
 
@@ -204,7 +195,15 @@ export default function Profile() {
                 />
                 <ProfileItem
                   label="Academic Year"
-                  value={profile.year}
+                  value={profile.academic_year || profile.year || "Not Provided"}
+                />
+                <ProfileItem
+                  label="Semester"
+                  value={profile.semester || "Not Provided"}
+                />
+                <ProfileItem
+                  label="Group"
+                  value={profile.group || "Not Provided"}
                 />
                 <ProfileItem
                   label="Enrolled Role"
@@ -284,7 +283,7 @@ function ProfileItem({ label, value }) {
         {label}
       </p>
       <p className="text-white font-semibold text-sm mt-1 break-words capitalize">
-        {value || "Not provided"}
+        {value || "Not Provided"}
       </p>
     </div>
   );

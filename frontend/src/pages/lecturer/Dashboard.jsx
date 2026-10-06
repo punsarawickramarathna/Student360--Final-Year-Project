@@ -93,6 +93,7 @@ export default function LecturerDashboard() {
   const [loading, setLoading] = useState(true);
   const [notifying, setNotifying] = useState(false);
   const [error, setError] = useState("");
+  const [emailToast, setEmailToast] = useState(null);
 
   useEffect(() => {
     loadDashboard();
@@ -441,10 +442,24 @@ export default function LecturerDashboard() {
         body: htmlBody,
       });
 
-      alert(response?.message || response?.data?.message || "Notifications sent successfully.");
+      const successCount =
+        response?.success_count ?? response?.data?.success_count ?? 0;
+      const failedCount =
+        response?.failed_count ?? response?.data?.failed_count ?? 0;
+      const toastMsg =
+        response?.message ||
+        `Emails sent successfully to ${successCount} student(s). ${failedCount} invalid/failed emails were skipped.`;
+
+      setEmailToast(toastMsg);
+      alert(toastMsg);
     } catch (err) {
       console.error("Email sending error:", err);
-      alert(err?.response?.data?.detail || "Email sending failed. Please check the backend.");
+      const errMsg =
+        err?.response?.data?.detail ||
+        err?.message ||
+        "Email sending failed. Please check the backend.";
+      setEmailToast(errMsg);
+      alert(errMsg);
     } finally {
       setNotifying(false);
     }
@@ -951,6 +966,27 @@ export default function LecturerDashboard() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Email Result Toast Popup */}
+      {emailToast && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-md bg-[#081526] border border-blue-500/40 text-slate-100 p-4 rounded-2xl shadow-2xl backdrop-blur-xl flex items-start gap-3">
+          <span className="text-2xl mt-0.5">📨</span>
+          <div className="flex-1">
+            <h4 className="text-xs font-bold text-blue-400 uppercase tracking-wider">
+              Notification Dispatch
+            </h4>
+            <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+              {emailToast}
+            </p>
+          </div>
+          <button
+            onClick={() => setEmailToast(null)}
+            className="text-slate-400 hover:text-white text-xs font-bold px-1.5 py-0.5 rounded-lg hover:bg-slate-800 transition"
+          >
+            ✕
+          </button>
         </div>
       )}
     </div>
