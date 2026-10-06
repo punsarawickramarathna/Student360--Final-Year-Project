@@ -147,7 +147,11 @@ const UserManagement = () => {
                     {student.student_id}
                   </td>
                   <td className="p-3.5 font-semibold text-white">
-                    {student.name}
+                    {(student.name && student.name.toLowerCase() !== "student")
+                      ? student.name
+                      : (student.student_name && student.student_name.toLowerCase() !== "student")
+                        ? student.student_name
+                        : (student.student_id || "Student")}
                   </td>
                   <td className="p-3.5 text-xs text-gray-400">
                     {student.email}

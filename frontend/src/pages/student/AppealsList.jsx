@@ -58,15 +58,9 @@ export default function AppealsList() {
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         
-        {/* Header Navigation */}
+        {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
           <div>
-            <button
-              onClick={() => navigate("/student/dashboard")}
-              className="text-xs text-gray-400 hover:text-white flex items-center gap-1 transition mb-2"
-            >
-              ← Back to Dashboard
-            </button>
             <h1 className="text-3xl font-bold tracking-tight text-white">
               My Submitted Appeals
             </h1>

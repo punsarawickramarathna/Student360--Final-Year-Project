@@ -16,8 +16,8 @@ import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 
 import {
-  LineChart,
-  Line,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -39,10 +39,10 @@ import {
 } from "../../api/api";
 
 const BEHAVIOR_COLORS = [
-  "#22c55e",
+  "#3b82f6",
   "#ef4444",
   "#f59e0b",
-  "#8b5cf6",
+  "#a855f7",
   "#64748b",
 ];
 
@@ -61,10 +61,7 @@ export default function StudentDashboard() {
   const [attendance, setAttendance] = useState([]);
   const [behavior, setBehavior] = useState([]);
   const [appeals, setAppeals] = useState([]);
-  const [sessions, setSessions] = useState({
-    count: 0,
-    data: [],
-  });
+  const [sessions, setSessions] = useState({ count: 0, data: [] });
 
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
@@ -75,61 +72,29 @@ export default function StudentDashboard() {
   }, []);
 
   const getArrayData = (response) => {
-    if (Array.isArray(response)) {
-      return response;
-    }
-
-    if (Array.isArray(response?.data)) {
-      return response.data;
-    }
-
-    if (Array.isArray(response?.data?.data)) {
-      return response.data.data;
-    }
-
+    if (Array.isArray(response)) return response;
+    if (Array.isArray(response?.data)) return response.data;
+    if (Array.isArray(response?.data?.data)) return response.data.data;
     return [];
   };
 
   const getSessionData = (response) => {
     if (Array.isArray(response?.data)) {
-      return {
-        count: response.data.length,
-        data: response.data,
-      };
+      return { count: response.data.length, data: response.data };
     }
-
     if (response?.data && typeof response.data === "object") {
       return {
-        count: Number(
-          response.data.count ||
-            response.data.total ||
-            response.data.data?.length ||
-            0
-        ),
-        data: Array.isArray(response.data.data)
-          ? response.data.data
-          : [],
+        count: Number(response.data.count || response.data.total || response.data.data?.length || 0),
+        data: Array.isArray(response.data.data) ? response.data.data : [],
       };
     }
-
     if (response && typeof response === "object") {
       return {
-        count: Number(
-          response.count ||
-            response.total ||
-            response.data?.length ||
-            0
-        ),
-        data: Array.isArray(response.data)
-          ? response.data
-          : [],
+        count: Number(response.count || response.total || response.data?.length || 0),
+        data: Array.isArray(response.data) ? response.data : [],
       };
     }
-
-    return {
-      count: 0,
-      data: [],
-    };
+    return { count: 0, data: [] };
   };
 
   async function loadData() {
@@ -155,11 +120,10 @@ export default function StudentDashboard() {
       setSessions(getSessionData(sessionsResponse));
     } catch (err) {
       console.error("Student dashboard error:", err);
-
       setError(
         err?.response?.data?.detail ||
-          err?.message ||
-          "Unable to load student dashboard data."
+        err?.message ||
+        "Unable to load student dashboard data."
       );
     } finally {
       setLoading(false);
@@ -172,14 +136,14 @@ export default function StudentDashboard() {
     student.username ||
     "";
 
- const sameStudent = (record) => {
-  if (!record) return false;
-  const recordId = String(
-    record?.student_id || record?.studentId || record?.user_id || record?.id || ""
-  ).trim().toLowerCase();
-  const currentStudentId = String(studentId).trim().toLowerCase();
-  return recordId === currentStudentId;
-};
+  const sameStudent = (record) => {
+    if (!record) return false;
+    const recordId = String(
+      record?.student_id || record?.studentId || record?.user_id || record?.id || ""
+    ).trim().toLowerCase();
+    const currentStudentId = String(studentId).trim().toLowerCase();
+    return recordId === currentStudentId;
+  };
 
   const myAttendance = attendance.filter(sameStudent);
   const myBehavior = behavior.filter(sameStudent);
@@ -187,46 +151,25 @@ export default function StudentDashboard() {
 
   const isExamRecord = (item) => {
     const sessionType = String(
-      item.session_type ||
-        item.type ||
-        item.session_category ||
-        ""
+      item.session_type || item.type || item.session_category || ""
     ).toLowerCase();
 
     if (sessionType) {
-      return (
-        sessionType === "exam" ||
-        sessionType === "examination"
-      );
+      return sessionType === "exam" || sessionType === "examination";
     }
 
-    const nonCheating = Number(
-      item.non_cheating ??
-        item.non_cheating_sec ??
-        0
-    );
-
+    const nonCheating = Number(item.non_cheating ?? item.non_cheating_sec ?? 0);
     return nonCheating > 0;
   };
 
   const myExamBehavior = myBehavior.filter(isExamRecord);
+  const myLectureBehavior = myBehavior.filter((item) => !isExamRecord(item));
 
-  const myLectureBehavior = myBehavior.filter(
-    (item) => !isExamRecord(item)
-  );
-
-  const totalSessions = Number(
-    sessions.count || sessions.data?.length || 0
-  );
+  const totalSessions = Number(sessions.count || sessions.data?.length || 0);
 
   const attendanceRate =
     totalSessions > 0
-      ? Math.min(
-          Math.round(
-            (myAttendance.length / totalSessions) * 100
-          ),
-          100
-        )
+      ? Math.min(Math.round((myAttendance.length / totalSessions) * 100), 100)
       : 0;
 
   let attentiveTime = 0;
@@ -236,971 +179,476 @@ export default function StudentDashboard() {
   let lectureCheatingTime = 0;
 
   myLectureBehavior.forEach((item) => {
-    attentiveTime += Number(
-      item.attentive ??
-        item.attentive_sec ??
-        0
-    );
-
-    sleepingTime += Number(
-      item.sleeping ??
-        item.sleeping_sec ??
-        0
-    );
-
-    phoneUseTime += Number(
-      item.phone_use ??
-        item.phone_use_sec ??
-        0
-    );
-
-    notAttentiveTime += Number(
-      item.not_attentive ??
-        item.not_attentive_sec ??
-        0
-    );
-
-    lectureCheatingTime += Number(
-      item.cheating ??
-        item.cheating_sec ??
-        0
-    );
+    attentiveTime += Number(item.attentive ?? item.attentive_sec ?? 0);
+    sleepingTime += Number(item.sleeping ?? item.sleeping_sec ?? 0);
+    phoneUseTime += Number(item.phone_use ?? item.phone_use_sec ?? 0);
+    notAttentiveTime += Number(item.not_attentive ?? item.not_attentive_sec ?? 0);
+    lectureCheatingTime += Number(item.cheating ?? item.cheating_sec ?? 0);
   });
 
   const totalLectureBehaviorTime =
-    attentiveTime +
-    sleepingTime +
-    phoneUseTime +
-    notAttentiveTime +
-    lectureCheatingTime;
+    attentiveTime + sleepingTime + phoneUseTime + notAttentiveTime + lectureCheatingTime;
 
   const behaviorScore =
     totalLectureBehaviorTime === 0
       ? 0
-      : Math.round(
-          (attentiveTime /
-            totalLectureBehaviorTime) *
-            100
-        );
+      : Math.round((attentiveTime / totalLectureBehaviorTime) * 100);
 
   let examCheatingTime = 0;
   let nonCheatingTime = 0;
 
   myExamBehavior.forEach((item) => {
-    examCheatingTime += Number(
-      item.cheating ??
-        item.cheating_sec ??
-        0
-    );
-
-    nonCheatingTime += Number(
-      item.non_cheating ??
-        item.non_cheating_sec ??
-        0
-    );
+    examCheatingTime += Number(item.cheating ?? item.cheating_sec ?? 0);
+    nonCheatingTime += Number(item.non_cheating ?? item.non_cheating_sec ?? 0);
   });
 
-  const totalExamBehaviorTime =
-    examCheatingTime + nonCheatingTime;
-
+  const totalExamBehaviorTime = examCheatingTime + nonCheatingTime;
   const hasExamData = totalExamBehaviorTime > 0;
 
   const examBehaviorScore = hasExamData
-    ? Math.round(
-        (nonCheatingTime /
-          totalExamBehaviorTime) *
-          100
-      )
+    ? Math.round((nonCheatingTime / totalExamBehaviorTime) * 100)
     : null;
 
   const latestExamRecord =
     myExamBehavior.length > 0
       ? [...myExamBehavior].sort((a, b) => {
-          const firstDate = new Date(
-            a.created_at || a.date || 0
-          );
-
-          const secondDate = new Date(
-            b.created_at || b.date || 0
-          );
-
-          return secondDate - firstDate;
-        })[0]
+        const firstDate = new Date(a.created_at || a.date || 0);
+        const secondDate = new Date(b.created_at || b.date || 0);
+        return secondDate - firstDate;
+      })[0]
       : null;
 
   let examStatus = "No Data";
-
   if (examBehaviorScore !== null) {
-    if (examBehaviorScore >= 80) {
-      examStatus = "Good";
-    } else if (examBehaviorScore >= 60) {
-      examStatus = "Warning";
-    } else {
-      examStatus = "Suspicious";
-    }
+    if (examBehaviorScore >= 80) examStatus = "Good";
+    else if (examBehaviorScore >= 60) examStatus = "Warning";
+    else examStatus = "Suspicious";
   }
 
-  const scoreValues = [
-    attendanceRate,
-    behaviorScore,
-  ];
-
-  if (examBehaviorScore !== null) {
-    scoreValues.push(examBehaviorScore);
-  }
+  const scoreValues = [attendanceRate, behaviorScore];
+  if (examBehaviorScore !== null) scoreValues.push(examBehaviorScore);
 
   const overallScore =
     scoreValues.length === 0
       ? 0
       : Math.round(
-          scoreValues.reduce(
-            (total, value) => total + value,
-            0
-          ) / scoreValues.length
-        );
+        scoreValues.reduce((total, value) => total + value, 0) / scoreValues.length
+      );
 
   let badge = "";
   let badgeColor = "";
 
   if (overallScore >= 80) {
     badge = "Excellent Student 🏆";
-    badgeColor = "text-green-400";
+    badgeColor = "text-emerald-400 bg-emerald-950/60 border-emerald-500/30";
   } else if (overallScore >= 60) {
     badge = "Good Student 👍";
-    badgeColor = "text-yellow-400";
+    badgeColor = "text-amber-400 bg-amber-950/60 border-amber-500/30";
   } else {
-    badge = "Needs Improvement ⚠️";
-    badgeColor = "text-red-400";
+    badge = "Needs Improvement ⚠️️";
+    badgeColor = "text-rose-400 bg-rose-950/60 border-rose-500/30";
   }
 
-  const attendanceTrendData = myAttendance.map(
-    (item, index) => {
-      const status = String(
-        item.status || "Present"
-      ).toLowerCase();
-
-      return {
-        label:
-          item.date ||
-          `Session ${index + 1}`,
-        score:
-          status === "absent" ? 0 : 100,
-      };
-    }
-  );
+  const attendanceTrendData = myAttendance.map((item, index) => {
+    const status = String(item.status || "Present").toLowerCase();
+    return {
+      label: item.date || `Session ${index + 1}`,
+      score: status === "absent" ? 0 : 100,
+    };
+  });
 
   const scoreComparisonData = [
-    {
-      name: "Attendance",
-      value: attendanceRate,
-    },
-    {
-      name: "Lecture Behaviour",
-      value: behaviorScore,
-    },
-    {
-      name: "Exam Behaviour",
-      value:
-        examBehaviorScore === null
-          ? 0
-          : examBehaviorScore,
-    },
+    { name: "Attendance", value: attendanceRate },
+    { name: "Lecture Attention", value: behaviorScore },
+    { name: "Exam Integrity", value: examBehaviorScore === null ? 0 : examBehaviorScore },
   ];
 
   const lectureBehaviorData = [
-    {
-      name: "Attentive",
-      value: Number(attentiveTime.toFixed(2)),
-    },
-    {
-      name: "Sleeping",
-      value: Number(sleepingTime.toFixed(2)),
-    },
-    {
-      name: "Phone Use",
-      value: Number(phoneUseTime.toFixed(2)),
-    },
-    {
-      name: "Not Attentive",
-      value: Number(
-        notAttentiveTime.toFixed(2)
-      ),
-    },
-    {
-      name: "Suspicious",
-      value: Number(
-        lectureCheatingTime.toFixed(2)
-      ),
-    },
+    { name: "Attentive", value: Number(attentiveTime.toFixed(1)) },
+    { name: "Sleeping", value: Number(sleepingTime.toFixed(1)) },
+    { name: "Phone Use", value: Number(phoneUseTime.toFixed(1)) },
+    { name: "Not Attentive", value: Number(notAttentiveTime.toFixed(1)) },
+    { name: "Suspicious", value: Number(lectureCheatingTime.toFixed(1)) },
   ].filter((item) => item.value > 0);
 
-  const attendanceRecords = myAttendance.map(
-    (item) => ({
-      date:
-        item.date ||
-        item.created_at ||
-        "-",
-      status: item.status || "Present",
-    })
-  );
+  const attendanceRecords = myAttendance.map((item) => ({
+    date: item.date || item.created_at || "-",
+    status: item.status || "Present",
+  }));
 
   const downloadPDF = async () => {
-    if (!dashboardRef.current) {
-      return;
-    }
-
+    if (!dashboardRef.current) return;
     try {
       setDownloading(true);
+      const canvas = await html2canvas(dashboardRef.current, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: "#030c18",
+      });
 
-      const canvas = await html2canvas(
-        dashboardRef.current,
-        {
-          scale: 2,
-          useCORS: true,
-          backgroundColor: "#020817",
-        }
-      );
-
-      const imageData =
-        canvas.toDataURL("image/png");
-
-      const pdf = new jsPDF(
-        "p",
-        "mm",
-        "a4"
-      );
-
-      const pdfWidth =
-        pdf.internal.pageSize.getWidth();
-
-      const pageHeight =
-        pdf.internal.pageSize.getHeight();
-
-      const imageHeight =
-        (canvas.height * pdfWidth) /
-        canvas.width;
+      const imageData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF("p", "mm", "a4");
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const imageHeight = (canvas.height * pdfWidth) / canvas.width;
 
       let heightLeft = imageHeight;
       let position = 0;
 
-      pdf.addImage(
-        imageData,
-        "PNG",
-        0,
-        position,
-        pdfWidth,
-        imageHeight
-      );
-
+      pdf.addImage(imageData, "PNG", 0, position, pdfWidth, imageHeight);
       heightLeft -= pageHeight;
 
       while (heightLeft > 0) {
-        position =
-          heightLeft - imageHeight;
-
+        position = heightLeft - imageHeight;
         pdf.addPage();
-
-        pdf.addImage(
-          imageData,
-          "PNG",
-          0,
-          position,
-          pdfWidth,
-          imageHeight
-        );
-
+        pdf.addImage(imageData, "PNG", 0, position, pdfWidth, imageHeight);
         heightLeft -= pageHeight;
       }
 
-      pdf.save(
-        `Student360_${studentId || "Student"}_Report.pdf`
-      );
+      pdf.save(`Student360_${studentId || "Student"}_Report.pdf`);
     } catch (err) {
       console.error("PDF error:", err);
-      alert("Unable to download PDF report.");
+      alert("Unable to generate PDF report.");
     } finally {
       setDownloading(false);
     }
   };
 
-  const getScoreClass = (score) => {
-    if (score >= 80) {
-      return "text-green-400";
-    }
-
-    if (score >= 60) {
-      return "text-yellow-400";
-    }
-
-    return "text-red-400";
-  };
-
-  const getExamStatusClass = () => {
-    if (examStatus === "Good") {
-      return "bg-green-500/15 text-green-400 border-green-500/30";
-    }
-
-    if (examStatus === "Warning") {
-      return "bg-yellow-500/15 text-yellow-400 border-yellow-500/30";
-    }
-
-    if (examStatus === "Suspicious") {
-      return "bg-red-500/15 text-red-400 border-red-500/30";
-    }
-
-    return "bg-gray-500/15 text-gray-400 border-gray-500/30";
+  const getScoreColor = (score) => {
+    if (score >= 80) return "text-emerald-400";
+    if (score >= 60) return "text-amber-400";
+    return "text-rose-400";
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#020817] text-white flex flex-col items-center justify-center">
-
-        <div className="w-12 h-12 rounded-full border-4 border-gray-700 border-t-blue-500 animate-spin" />
-
-        <h2 className="text-xl font-semibold mt-5">
-          Loading Student Dashboard
+      <div className="min-h-screen bg-[#030c18] flex flex-col items-center justify-center text-white">
+        <div className="w-12 h-12 rounded-full border-4 border-slate-700 border-t-blue-500 animate-spin" />
+        <h2 className="text-base font-semibold mt-4 text-slate-300">
+          Syncing Academic Records...
         </h2>
-
-        <p className="text-gray-400 mt-2">
-          Fetching your performance records...
-        </p>
-
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-[#020817] text-white flex items-center justify-center p-6">
-
-        <div className="w-full max-w-md bg-[#0b2236] border border-red-500/30 rounded-2xl p-8 text-center">
-
-          <div className="text-5xl">
-            ⚠️
-          </div>
-
-          <h2 className="text-2xl font-bold mt-4">
-            Dashboard Loading Failed
-          </h2>
-
-          <p className="text-gray-400 mt-3">
-            {error}
-          </p>
-
+      <div className="min-h-screen bg-[#030c18] flex items-center justify-center p-4">
+        <div className="w-full max-w-md bg-[#091728] border border-rose-500/30 rounded-2xl p-6 text-center text-white">
+          <h2 className="text-lg font-bold">Failed to Load Dashboard</h2>
+          <p className="text-slate-400 text-sm mt-2">{error}</p>
           <button
             onClick={loadData}
-            className="mt-6 bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-xl font-semibold"
+            className="mt-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2 rounded-xl text-sm transition"
           >
-            Try Again
+            Retry
           </button>
-
         </div>
-
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#020817] text-white">
-
+    <div className="min-h-screen bg-[#030c18] text-slate-100 selection:bg-blue-600 selection:text-white pb-14">
       <Navbar />
 
-      <div
-        ref={dashboardRef}
-        className="max-w-7xl mx-auto p-4 md:p-8"
-      >
+      <main ref={dashboardRef} className="max-w-7xl mx-auto px-4 sm:px-6 pt-7 space-y-6">
 
-        {/* Welcome Header */}
+        {/* Welcome Hero Banner (Logo & Student360 Removed - Clean Gradient Mix) */}
+        <section className="bg-[#081526] border border-slate-800/90 rounded-2xl p-6 sm:p-7 shadow-xl relative overflow-hidden">
+          <div className="absolute top-0 right-1/4 w-80 h-32 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
 
-        <section className="bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-white/10 rounded-2xl p-6 md:p-8">
-
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5 relative z-10">
             <div>
+              {/* Subtle Tagline */}
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gradient-to-r from-blue-500/15 via-indigo-500/15 to-purple-500/15 border border-blue-500/25 mb-3">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                <span className="text-xs font-bold uppercase tracking-wider bg-gradient-to-r from-blue-400 via-sky-300 to-indigo-300 bg-clip-text text-transparent">
+                  Student Academic Portal
+                </span>
+              </div>
 
-              <p className="text-blue-300 text-sm font-medium">
-                STUDENT PERFORMANCE PORTAL
-              </p>
-
-              <h1 className="text-3xl md:text-4xl font-bold mt-2">
-                Welcome, {student.name || "Student"}
+              {/* Mix Color Welcome Headline */}
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white flex items-center flex-wrap gap-2">
+                <span>Welcome,</span>
+                <span className="bg-gradient-to-r from-blue-400 via-sky-300 to-teal-300 bg-clip-text text-transparent capitalize">
+                  {student.name || "Student"}
+                </span>
               </h1>
 
-              <p className="text-gray-300 mt-2">
-                {studentId || "Student ID not available"}
-                {student.intake
-                  ? ` • Intake ${student.intake}`
-                  : ""}
-              </p>
+              {/* Student Metadata Badges */}
+              <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
+                <span className="font-mono font-semibold text-sky-400 bg-slate-900/90 px-2.5 py-1 rounded-lg border border-slate-800 text-xs shadow-inner">
+                  {studentId}
+                </span>
 
-              <p
-                className={`mt-4 font-semibold ${badgeColor}`}
-              >
-                {badge}
-              </p>
+                {student.intake && (
+                  <>
+                    <span className="text-slate-600">•</span>
+                    <span className="text-slate-400 text-xs font-medium bg-slate-900/50 px-2.5 py-1 rounded-lg border border-slate-800/60">
+                      Intake {student.intake}
+                    </span>
+                  </>
+                )}
 
+                <span className="text-slate-600">•</span>
+                <span className={`inline-flex px-3 py-1 rounded-full text-xs font-bold border shadow-xs ${badgeColor}`}>
+                  {badge}
+                </span>
+              </div>
             </div>
 
-            <div className="flex flex-wrap gap-3">
-
+            {/* Quick Actions */}
+            <div className="flex items-center gap-3">
               <button
-                onClick={() =>
-                  navigate("/student/profile")
-                }
-                className="px-5 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition"
+                onClick={() => navigate("/student/appeal/new")}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white font-bold text-xs shadow-lg shadow-blue-600/30 hover:scale-[1.02] active:scale-[0.98] transition"
               >
-                View Profile
+                + Submit New Appeal
               </button>
-
               <button
-                onClick={() =>
-                  navigate("/student/appeal/new")
-                }
-                className="px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 font-semibold transition"
+                onClick={downloadPDF}
+                disabled={downloading}
+                className="px-4 py-2.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-slate-200 font-bold text-xs transition"
               >
-                Submit Appeal
+                {downloading ? "Generating..." : "Download PDF"}
               </button>
-
             </div>
-
           </div>
-
         </section>
 
-        {/* Risk Alert */}
-
-        {overallScore < 60 && (
-          <section className="mt-6 bg-red-500/10 border border-red-500/30 rounded-2xl p-5">
-
-            <div className="flex items-start gap-4">
-
-              <div className="text-3xl">
-                🚨
-              </div>
-
-              <div>
-
-                <h2 className="text-lg font-bold text-red-300">
-                  Performance Alert
-                </h2>
-
-                <p className="text-gray-300 mt-2">
-                  Your current overall performance is below
-                  the recommended level. Improve attendance,
-                  classroom attention and follow examination
-                  rules.
-                </p>
-
-              </div>
-
-            </div>
-
-          </section>
-        )}
-
-        {/* Metric Cards */}
-
-        <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 mt-7">
-
+        {/* Primary Metrics Grid */}
+        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <MetricCard
             title="Attendance"
             value={`${attendanceRate}%`}
-            subtitle={`${myAttendance.length} attendance records`}
+            detail={`${myAttendance.length} of ${totalSessions} sessions`}
+            valueColor={getScoreColor(attendanceRate)}
             icon="📅"
-            valueClass={getScoreClass(
-              attendanceRate
-            )}
           />
-
           <MetricCard
-            title="Lecture Behaviour"
+            title="Lecture Attention"
             value={`${behaviorScore}%`}
-            subtitle={`${myLectureBehavior.length} lecture records`}
+            detail={`${myLectureBehavior.length} monitored sessions`}
+            valueColor={getScoreColor(behaviorScore)}
             icon="🧠"
-            valueClass={getScoreClass(
-              behaviorScore
-            )}
           />
-
           <MetricCard
-            title="Exam Behaviour"
-            value={
-              examBehaviorScore === null
-                ? "No Data"
-                : `${examBehaviorScore}%`
-            }
-            subtitle={`${myExamBehavior.length} exam records`}
+            title="Exam Integrity"
+            value={examBehaviorScore === null ? "No Data" : `${examBehaviorScore}%`}
+            detail={`${myExamBehavior.length} examinations evaluated`}
+            valueColor={examBehaviorScore === null ? "text-slate-500" : getScoreColor(examBehaviorScore)}
             icon="📝"
-            valueClass={
-              examBehaviorScore === null
-                ? "text-gray-400"
-                : getScoreClass(
-                    examBehaviorScore
-                  )
-            }
           />
-
           <MetricCard
             title="Overall Score"
             value={`${overallScore}%`}
-            subtitle="Combined performance"
+            detail="Aggregated Performance"
+            valueColor={getScoreColor(overallScore)}
             icon="📊"
-            valueClass={getScoreClass(
-              overallScore
-            )}
           />
-
         </section>
 
-        {/* Charts */}
-
-        <section className="grid grid-cols-1 xl:grid-cols-2 gap-6 mt-7">
-
-          {/* Attendance Trend */}
-
-          <div className="bg-[#0b2236] border border-white/10 rounded-2xl p-5">
-
-            <h2 className="text-xl font-bold">
-              Attendance Trend
-            </h2>
-
-            <p className="text-gray-400 text-sm mt-1 mb-5">
-              Session-by-session attendance records
-            </p>
+        {/* Analytics Charts */}
+        <section className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {/* Trend Area Chart */}
+          <div className="bg-[#081526] border border-slate-800 rounded-2xl p-5 shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-sm font-bold text-white uppercase tracking-wide">
+                  Attendance Trajectory
+                </h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Presence records across lecture timeline
+                </p>
+              </div>
+              <span className="text-xs font-bold text-blue-400 bg-blue-500/10 px-2.5 py-1 rounded-lg border border-blue-500/20">
+                Rate: {attendanceRate}%
+              </span>
+            </div>
 
             {attendanceTrendData.length > 0 ? (
-              <ResponsiveContainer
-                width="100%"
-                height={300}
-              >
-
-                <LineChart
-                  data={attendanceTrendData}
-                >
-
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke="#334155"
-                  />
-
-                  <XAxis
-                    dataKey="label"
-                    stroke="#94a3b8"
-                  />
-
-                  <YAxis
-                    domain={[0, 100]}
-                    stroke="#94a3b8"
-                  />
-
+              <ResponsiveContainer width="100%" height={230}>
+                <AreaChart data={attendanceTrendData} margin={{ top: 10, right: 15, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="darkAttendanceGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.35} />
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                  <XAxis dataKey="label" stroke="#64748b" tick={{ fontSize: 11 }} />
+                  <YAxis domain={[0, 100]} stroke="#64748b" tick={{ fontSize: 11 }} />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: "#0f172a",
-                      border:
-                        "1px solid #334155",
+                      backgroundColor: "#0b1a2e",
+                      border: "1px solid #1e293b",
                       borderRadius: "10px",
+                      color: "#fff",
+                      fontSize: "12px",
                     }}
                   />
-
-                  <Line
+                  <Area
                     type="monotone"
                     dataKey="score"
                     stroke="#3b82f6"
                     strokeWidth={3}
-                    dot={{
-                      r: 5,
-                    }}
+                    fillOpacity={1}
+                    fill="url(#darkAttendanceGrad)"
                   />
-
-                </LineChart>
-
+                </AreaChart>
               </ResponsiveContainer>
             ) : (
-              <EmptyState
-                icon="📅"
-                message="No attendance records available."
-              />
+              <EmptyState message="No attendance data to plot." />
             )}
-
           </div>
 
-          {/* Score Comparison */}
+          {/* Bar Chart */}
+          <div className="bg-[#081526] border border-slate-800 rounded-2xl p-5 shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-sm font-bold text-white uppercase tracking-wide">
+                  Pillar Evaluation Index
+                </h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Comparison across main academic performance metrics
+                </p>
+              </div>
+            </div>
 
-          <div className="bg-[#0b2236] border border-white/10 rounded-2xl p-5">
-
-            <h2 className="text-xl font-bold">
-              Score Comparison
-            </h2>
-
-            <p className="text-gray-400 text-sm mt-1 mb-5">
-              Attendance, lecture and exam performance
-            </p>
-
-            <ResponsiveContainer
-              width="100%"
-              height={300}
-            >
-
-              <BarChart
-                data={scoreComparisonData}
-              >
-
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke="#334155"
-                  vertical={false}
-                />
-
-                <XAxis
-                  dataKey="name"
-                  stroke="#94a3b8"
-                />
-
-                <YAxis
-                  domain={[0, 100]}
-                  stroke="#94a3b8"
-                />
-
+            <ResponsiveContainer width="100%" height={230}>
+              <BarChart data={scoreComparisonData} margin={{ top: 10, right: 15, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                <XAxis dataKey="name" stroke="#64748b" tick={{ fontSize: 11 }} />
+                <YAxis domain={[0, 100]} stroke="#64748b" tick={{ fontSize: 11 }} />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: "#0f172a",
-                    border:
-                      "1px solid #334155",
+                    backgroundColor: "#0b1a2e",
+                    border: "1px solid #1e293b",
                     borderRadius: "10px",
+                    color: "#fff",
+                    fontSize: "12px",
                   }}
                 />
-
-                <Bar
-                  dataKey="value"
-                  fill="#22c55e"
-                  radius={[8, 8, 0, 0]}
-                />
-
+                <Bar dataKey="value" fill="#3b82f6" radius={[6, 6, 0, 0]} maxBarSize={48} />
               </BarChart>
-
             </ResponsiveContainer>
-
           </div>
-
         </section>
 
-        {/* Lecture Behavior Analysis */}
-
-        <section className="bg-[#0b2236] border border-white/10 rounded-2xl p-5 mt-7">
-
-          <div className="mb-6">
-
-            <h2 className="text-xl font-bold">
-              Lecture Behaviour Analysis
+        {/* Behavioral Analytics */}
+        <section className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {/* Lecture Behavior */}
+          <div className="bg-[#081526] border border-slate-800 rounded-2xl p-5 shadow-xl">
+            <h2 className="text-sm font-bold text-white uppercase tracking-wide mb-1">
+              Lecture Behaviour Composition
             </h2>
-
-            <p className="text-gray-400 text-sm mt-1">
-              AI-detected classroom behaviour summary
+            <p className="text-xs text-slate-400 mb-4">
+              Real-time computer vision breakdown of engagement
             </p>
 
+            {totalLectureBehaviorTime > 0 ? (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <MiniStat label="Attentive" value={`${attentiveTime.toFixed(1)}s`} color="text-emerald-400" />
+                <MiniStat label="Sleeping" value={`${sleepingTime.toFixed(1)}s`} color="text-rose-400" />
+                <MiniStat label="Phone Usage" value={`${phoneUseTime.toFixed(1)}s`} color="text-amber-400" />
+                <MiniStat label="Distracted" value={`${notAttentiveTime.toFixed(1)}s`} color="text-slate-300" />
+              </div>
+            ) : (
+              <EmptyState message="No lecture behavioral observations logged." />
+            )}
           </div>
 
-          {totalLectureBehaviorTime > 0 ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-              <div className="grid grid-cols-2 gap-4">
-
-                <BehaviorCard
-                  title="Attentive"
-                  value={attentiveTime}
-                  icon="👀"
-                  positive
-                />
-
-                <BehaviorCard
-                  title="Sleeping"
-                  value={sleepingTime}
-                  icon="😴"
-                />
-
-                <BehaviorCard
-                  title="Phone Use"
-                  value={phoneUseTime}
-                  icon="📱"
-                />
-
-                <BehaviorCard
-                  title="Not Attentive"
-                  value={notAttentiveTime}
-                  icon="↗️"
-                />
-
-              </div>
-
-              <ResponsiveContainer
-                width="100%"
-                height={300}
-              >
-
-                <PieChart>
-
-                  <Pie
-                    data={lectureBehaviorData}
-                    dataKey="value"
-                    nameKey="name"
-                    innerRadius={60}
-                    outerRadius={100}
-                    paddingAngle={3}
-                    label={({ name }) => name}
-                  >
-
-                    {lectureBehaviorData.map(
-                      (item, index) => (
-                        <Cell
-                          key={item.name}
-                          fill={
-                            BEHAVIOR_COLORS[
-                              index %
-                                BEHAVIOR_COLORS.length
-                            ]
-                          }
-                        />
-                      )
-                    )}
-
-                  </Pie>
-
-                  <Tooltip
-                    formatter={(value) =>
-                      `${Number(value).toFixed(
-                        2
-                      )} seconds`
-                    }
-                    contentStyle={{
-                      backgroundColor: "#0f172a",
-                      border:
-                        "1px solid #334155",
-                      borderRadius: "10px",
-                    }}
-                  />
-
-                  <Legend />
-
-                </PieChart>
-
-              </ResponsiveContainer>
-
-            </div>
-          ) : (
-            <EmptyState
-              icon="🧠"
-              message="No lecture behaviour records available."
-            />
-          )}
-
-        </section>
-
-        {/* Exam Behaviour */}
-
-        <section className="bg-[#0b2236] border border-white/10 rounded-2xl p-5 mt-7">
-
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-
-            <div>
-
-              <h2 className="text-xl font-bold">
-                Exam Behaviour Analysis
+          {/* Exam Integrity */}
+          <div className="bg-[#081526] border border-slate-800 rounded-2xl p-5 shadow-xl">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-sm font-bold text-white uppercase tracking-wide">
+                Examination Integrity Log
               </h2>
-
-              <p className="text-gray-400 text-sm mt-1">
-                AI-detected examination behaviour
-              </p>
-
+              <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${examStatus === "Good" ? "bg-emerald-950/60 text-emerald-400 border-emerald-500/30" :
+                examStatus === "Warning" ? "bg-amber-950/60 text-amber-400 border-amber-500/30" :
+                  "bg-slate-900 text-slate-400 border-slate-700"
+                }`}>
+                {examStatus}
+              </span>
             </div>
+            <p className="text-xs text-slate-400 mb-4">
+              Automated malpractice detection report
+            </p>
 
-            <span
-              className={`inline-flex px-4 py-2 rounded-full text-sm font-semibold border ${getExamStatusClass()}`}
-            >
-              {examStatus}
-              {examBehaviorScore !== null
-                ? ` • ${examBehaviorScore}%`
-                : ""}
-            </span>
-
-          </div>
-
-          {!hasExamData ? (
-            <EmptyState
-              icon="📝"
-              message="No exam behaviour records are available yet."
-            />
-          ) : (
-            <>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-
-                <ExamMetricCard
-                  title="Non-Cheating Time"
-                  value={nonCheatingTime}
-                  icon="✅"
-                  type="good"
-                />
-
-                <ExamMetricCard
-                  title="Suspicious Time"
-                  value={examCheatingTime}
-                  icon="⚠️"
-                  type="risk"
-                />
-
-                <ExamMetricCard
-                  title="Exam Behaviour Score"
-                  value={`${examBehaviorScore}%`}
-                  icon="📊"
-                  showSeconds={false}
-                  type={
-                    examBehaviorScore >= 80
-                      ? "good"
-                      : examBehaviorScore >= 60
-                      ? "warning"
-                      : "risk"
-                  }
-                />
-
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-5">
-
-                <InfoCard
-                  label="Latest Exam Date"
-                  value={
-                    latestExamRecord?.date ||
-                    latestExamRecord?.created_at ||
-                    "Not available"
-                  }
-                />
-
-                <InfoCard
-                  label="Exam Records"
-                  value={myExamBehavior.length}
-                />
-
-                <InfoCard
-                  label="Detected Status"
-                  value={examStatus}
-                />
-
-              </div>
-
-              <div className="mt-6 bg-blue-500/10 border border-blue-500/30 rounded-xl p-5">
-
-                <h3 className="font-semibold text-blue-300">
-                  🤖 AI Exam Recommendation
-                </h3>
-
-                <p className="text-gray-300 mt-2">
-
+            {hasExamData ? (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <MiniStat label="Compliant Duration" value={`${nonCheatingTime.toFixed(1)}s`} color="text-emerald-400" />
+                  <MiniStat label="Irregularity Flagged" value={`${examCheatingTime.toFixed(1)}s`} color="text-rose-400" />
+                </div>
+                <div className="bg-[#0c1e36] border border-blue-500/20 rounded-xl p-3.5 text-xs text-slate-300 leading-relaxed">
+                  <strong className="text-blue-400 font-bold">AI Observation: </strong>
                   {examBehaviorScore >= 80
-                    ? "Excellent exam behaviour. No significant suspicious activity was detected."
-                    : examBehaviorScore >= 60
-                    ? "Some unusual behaviour was detected. Stay focused and avoid unnecessary movements during examinations."
-                    : "A high level of suspicious behaviour was detected. Follow examination rules and avoid actions that may be interpreted as cheating."}
-
-                </p>
-
+                    ? "Exam conduct adheres strictly to Horizon examination integrity standards."
+                    : "Anomalous movement flagged during invigilation. Please adhere to proctor guidelines."}
+                </div>
               </div>
-
-            </>
-          )}
-
+            ) : (
+              <EmptyState message="No examination records indexed." />
+            )}
+          </div>
         </section>
 
-        {/* Attendance History */}
-
-        <section className="bg-[#0b2236] border border-white/10 rounded-2xl p-5 mt-7">
-
-          <h2 className="text-xl font-bold">
-            Attendance History
+        {/* Tabular History: Attendance */}
+        <section className="bg-[#081526] border border-slate-800 rounded-2xl p-5 shadow-xl overflow-hidden">
+          <h2 className="text-sm font-bold text-white uppercase tracking-wide mb-1">
+            Recorded Attendance Log
           </h2>
-
-          <p className="text-gray-400 text-sm mt-1 mb-5">
-            Your recorded classroom attendance
+          <p className="text-xs text-slate-400 mb-4">
+            Official presence timestamps captured by surveillance
           </p>
 
-          {attendanceRecords.length > 0 ? (
-            <AttendanceTable
-              records={attendanceRecords}
-            />
-          ) : (
-            <EmptyState
-              icon="📋"
-              message="No attendance history available."
-            />
-          )}
-
+          <div className="rounded-xl overflow-hidden border border-slate-800">
+            {attendanceRecords.length > 0 ? (
+              <AttendanceTable records={attendanceRecords} />
+            ) : (
+              <EmptyState message="No records found in current academic period." />
+            )}
+          </div>
         </section>
 
-        {/* Appeals */}
-
-        {/* Appeals & Admin Remarks Section */}
-        <section className="bg-[#0b2236] border border-white/10 rounded-2xl p-6 mt-7 shadow-xl">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-gray-700/60">
+        {/* Appeals & Official Remarks Section */}
+        <section className="bg-[#081526] border border-slate-800 rounded-2xl p-5 shadow-xl">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-4">
             <div>
-              <h2 className="text-xl font-bold flex items-center gap-2 text-white">
-                <span>📜</span> My Appeals & Admin Responses
+              <h2 className="text-sm font-bold text-white uppercase tracking-wide">
+                Appeals & Administrative Decisions
               </h2>
-              <p className="text-gray-400 text-sm mt-1">
-                Track your submitted appeals and official feedback from administration.
-              </p>
+              <p className="text-xs text-slate-400 mt-0.5">Formal grievance status and feedback</p>
             </div>
-
             <button
               onClick={() => navigate("/student/appeal/new")}
-              className="bg-blue-600 hover:bg-blue-700 px-5 py-2.5 rounded-xl font-semibold transition text-sm flex items-center gap-2 self-start sm:self-auto"
+              className="text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-1.5 rounded-xl transition"
             >
-              <span>➕</span> New Appeal
+              + Create Appeal
             </button>
           </div>
 
           {myAppeals.length === 0 ? (
-            <EmptyState
-              icon="📨"
-              message="No appeals submitted yet."
-            />
+            <EmptyState message="No formal appeals lodged." />
           ) : (
-            <div className="space-y-4">
+            <div className="divide-y divide-slate-800/60">
               {myAppeals.map((item, index) => (
-                <div
-                  key={item._id || index}
-                  className="bg-[#071828] border border-white/10 rounded-2xl p-5 hover:border-gray-600 transition duration-200"
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-800 pb-3 mb-3">
-                    <div>
-                      <span className="text-xs font-mono text-blue-400 font-semibold">
-                        Submitted Date: {item.date || item.created_at?.substring(0, 10) || "N/A"}
-                      </span>
-                      <h3 className="text-base font-bold text-white mt-1">
-                        {item.type || item.reason || "Student Appeal"}
-                      </h3>
-                      <p className="text-gray-300 text-sm mt-1">
-                        "{item.message || item.description || "No description provided."}"
-                      </p>
-                    </div>
-
-                    <div className="self-start sm:self-center">
-                      <AppealStatus status={item.status || "Pending"} />
-                    </div>
+                <div key={item._id || index} className="py-3.5 first:pt-0 last:pb-0">
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <span className="font-bold text-white text-sm">{item.type || item.reason || "Appeal"}</span>
+                    <span className="font-mono text-slate-500">{item.date || item.created_at?.substring(0, 10)}</span>
                   </div>
-
-                  {/* Admin Official Remark Box */}
+                  <p className="text-xs text-slate-400 italic mb-2">"{item.message || item.description}"</p>
                   {item.admin_response ? (
-                    <div className="bg-[#0f2438] border border-blue-500/30 rounded-xl p-3.5 text-xs mt-3">
-                      <div className="flex items-center gap-1.5 text-blue-400 font-bold mb-1 text-sm">
-                        <span>💬 Admin Remarks ({item.reviewed_by || "System Admin"}):</span>
-                      </div>
-                      <p className="text-gray-200 italic text-sm leading-relaxed">
-                        "{item.admin_response}"
-                      </p>
+                    <div className="bg-[#0d223a] border-l-4 border-blue-500 rounded-r-xl p-3 text-xs text-slate-200">
+                      <strong className="text-blue-400">Admin Remark:</strong> {item.admin_response}
                     </div>
                   ) : (
-                    <div className="text-xs text-gray-400 italic flex items-center gap-1.5 mt-2">
-                      <span>⏳</span> Pending official administrative review and remarks...
-                    </div>
+                    <span className="text-[11px] text-amber-400 font-semibold bg-amber-950/60 px-2 py-0.5 rounded border border-amber-500/30">
+                      Pending Administrative Review
+                    </span>
                   )}
                 </div>
               ))}
@@ -1208,233 +656,47 @@ export default function StudentDashboard() {
           )}
         </section>
 
-        {/* Overall Recommendation */}
-
-        <section className="bg-gradient-to-r from-blue-600/15 to-purple-600/15 border border-blue-500/20 rounded-2xl p-6 mt-7">
-
-          <h2 className="text-xl font-bold">
-            AI Performance Recommendation
-          </h2>
-
-          <p className="text-gray-300 mt-3 leading-relaxed">
-
-            {overallScore >= 80
-              ? "Excellent performance. Continue maintaining strong attendance, attentive classroom behaviour and responsible examination conduct."
-              : overallScore >= 60
-              ? "Your performance is good, but there is room for improvement. Attend lectures regularly and remain more focused during classroom and examination sessions."
-              : "Your performance requires attention. Improve attendance, avoid phone usage, remain attentive and follow examination rules carefully."}
-
-          </p>
-
-        </section>
-
-      </div>
-
-      {/* Download PDF */}
-
-      <div className="text-center py-8">
-
-        <button
-          onClick={downloadPDF}
-          disabled={downloading}
-          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed px-7 py-3 rounded-xl text-white font-semibold transition"
-        >
-          {downloading
-            ? "Generating PDF..."
-            : "Download Dashboard PDF"}
-        </button>
-
-      </div>
-
+      </main>
     </div>
   );
 }
 
-function MetricCard({
-  title,
-  value,
-  subtitle,
-  icon,
-  valueClass = "text-white",
-}) {
+function MetricCard({ title, value, detail, valueColor, icon }) {
   return (
-    <div className="bg-[#0b2236] rounded-2xl p-5 shadow-lg border border-white/10 hover:-translate-y-1 transition">
-
-      <div className="flex items-start justify-between">
-
-        <div>
-
-          <h3 className="text-gray-400 text-sm">
-            {title}
-          </h3>
-
-          <h2
-            className={`text-3xl font-bold mt-3 ${valueClass}`}
-          >
-            {value}
-          </h2>
-
-          <p className="text-gray-500 text-sm mt-2">
-            {subtitle}
-          </p>
-
-        </div>
-
-        <div className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center text-2xl">
+    <div className="bg-[#081526] border border-slate-800 rounded-2xl p-5 shadow-xl hover:border-slate-700 transition duration-200 flex flex-col justify-between">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+          {title}
+        </span>
+        <span className="text-xl p-1.5 bg-slate-900 rounded-xl border border-slate-800">
           {icon}
-        </div>
-
+        </span>
       </div>
 
-    </div>
-  );
-}
-
-function BehaviorCard({
-  title,
-  value,
-  icon,
-  positive = false,
-}) {
-  return (
-    <div className="bg-[#071828] border border-white/10 rounded-xl p-4">
-
-      <div className="text-2xl">
-        {icon}
-      </div>
-
-      <p className="text-gray-400 text-sm mt-3">
-        {title}
-      </p>
-
-      <h3
-        className={`text-2xl font-bold mt-2 ${
-          positive
-            ? "text-green-400"
-            : Number(value) > 0
-            ? "text-red-400"
-            : "text-gray-400"
-        }`}
-      >
-        {Number(value).toFixed(2)}
-      </h3>
-
-      <p className="text-xs text-gray-500 mt-1">
-        seconds
-      </p>
-
-    </div>
-  );
-}
-
-function ExamMetricCard({
-  title,
-  value,
-  icon,
-  type,
-  showSeconds = true,
-}) {
-  let valueClass = "text-red-400";
-  let borderClass = "border-red-500/20";
-
-  if (type === "good") {
-    valueClass = "text-green-400";
-    borderClass = "border-green-500/20";
-  } else if (type === "warning") {
-    valueClass = "text-yellow-400";
-    borderClass = "border-yellow-500/20";
-  }
-
-  return (
-    <div
-      className={`bg-[#071828] border ${borderClass} rounded-xl p-5`}
-    >
-
-      <div className="text-2xl">
-        {icon}
-      </div>
-
-      <p className="text-sm text-gray-400 mt-3">
-        {title}
-      </p>
-
-      <h3
-        className={`text-2xl font-bold mt-2 ${valueClass}`}
-      >
-        {typeof value === "number"
-          ? value.toFixed(2)
-          : value}
-      </h3>
-
-      {showSeconds && (
-        <p className="text-xs text-gray-500 mt-1">
-          seconds
-        </p>
-      )}
-
-    </div>
-  );
-}
-
-function InfoCard({ label, value }) {
-  return (
-    <div className="bg-[#071828] border border-white/10 rounded-xl p-4">
-
-      <p className="text-xs text-gray-500">
-        {label}
-      </p>
-
-      <p className="font-semibold mt-2 break-words">
+      <div className={`text-3xl font-black mt-3 mb-1 tracking-tight ${valueColor}`}>
         {value}
-      </p>
+      </div>
 
+      <span className="text-[11px] text-slate-400 font-semibold">
+        {detail}
+      </span>
     </div>
   );
 }
 
-function AppealStatus({ status }) {
-  const normalizedStatus = String(
-    status
-  ).toLowerCase();
-
-  let className =
-    "bg-yellow-500/15 text-yellow-400 border-yellow-500/30";
-
-  if (
-    normalizedStatus === "approved" ||
-    normalizedStatus === "accepted"
-  ) {
-    className =
-      "bg-green-500/15 text-green-400 border-green-500/30";
-  } else if (
-    normalizedStatus === "rejected" ||
-    normalizedStatus === "declined"
-  ) {
-    className =
-      "bg-red-500/15 text-red-400 border-red-500/30";
-  }
-
+function MiniStat({ label, value, color }) {
   return (
-    <span
-      className={`inline-flex px-4 py-2 rounded-full text-sm font-semibold border ${className}`}
-    >
-      {status}
-    </span>
+    <div className="bg-[#0c1a2c] border border-slate-800 rounded-xl p-3 text-center">
+      <span className="text-[11px] text-slate-400 block font-semibold mb-1">{label}</span>
+      <span className={`text-xl font-black ${color}`}>{value}</span>
+    </div>
   );
 }
 
-function EmptyState({ icon, message }) {
+function EmptyState({ message }) {
   return (
-    <div className="min-h-[180px] flex flex-col items-center justify-center text-center text-gray-500">
-
-      <div className="text-4xl mb-3">
-        {icon}
-      </div>
-
-      <p>
-        {message}
-      </p>
-
+    <div className="py-8 text-center text-xs font-medium text-slate-500">
+      {message}
     </div>
   );
 }
