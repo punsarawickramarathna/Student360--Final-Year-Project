@@ -1,5 +1,6 @@
 # routes/profile.py
 
+# pyrefly: ignore [missing-import]
 from fastapi import (
     APIRouter,
     UploadFile,
@@ -8,7 +9,7 @@ from fastapi import (
     Depends
 )
 
-from database import users_collection
+from database import users_collection, students_collection
 from auth import (
     get_current_user,
     verify_password,
@@ -41,56 +42,101 @@ os.makedirs(
 
 # ---------------------------------
 # Helper function
-# MongoDB user -> frontend JSON
+# MongoDB user/student -> frontend JSON
 # ---------------------------------
 
-def format_user(user):
+def format_user(user, student=None):
+    if not user and not student:
+        return {}
+
+    user_data = user or {}
+    student_id = user_data.get("student_id") or (student.get("student_id") if student else "")
+
+    if student is None and student_id:
+        student = students_collection.find_one({
+            "student_id": student_id
+        })
+
+    student_data = student or {}
+
+    academic_year = (
+        student_data.get("academic_year")
+        or student_data.get("year")
+        or user_data.get("academic_year")
+        or user_data.get("year")
+        or ""
+    )
+
+    semester = (
+        student_data.get("semester")
+        or user_data.get("semester")
+        or ""
+    )
+
+    group = (
+        student_data.get("group")
+        or user_data.get("group")
+        or ""
+    )
+
+    department = (
+        user_data.get("department")
+        or student_data.get("department")
+        or ""
+    )
+
+    intake = (
+        user_data.get("intake")
+        or student_data.get("intake")
+        or ""
+    )
+
+    name = (
+        user_data.get("name")
+        or student_data.get("name")
+        or ""
+    )
+
+    email = (
+        user_data.get("email")
+        or student_data.get("email")
+        or ""
+    )
+
+    role = (
+        user_data.get("role")
+        or student_data.get("role")
+        or "student"
+    )
+
     return {
-        "student_id": user.get(
-            "student_id",
-            ""
-        ),
-        "name": user.get(
-            "name",
-            ""
-        ),
-        "intake": user.get(
-            "intake",
-            ""
-        ),
-        "role": user.get(
-            "role",
-            ""
-        ),
-        "department": user.get(
-            "department",
-            ""
-        ),
-        "year": user.get(
-            "year",
-            ""
-        ),
-        "email": user.get(
-            "email",
-            ""
-        ),
-        "phone": user.get(
+        "student_id": student_id,
+        "name": name,
+        "intake": intake,
+        "role": role,
+        "department": department,
+        "year": academic_year,
+        "academic_year": academic_year,
+        "semester": semester,
+        "group": group,
+        "email": email,
+        "phone": user_data.get(
             "phone",
-            ""
+            student_data.get("phone", "")
         ),
-        "address": user.get(
+        "address": user_data.get(
             "address",
-            ""
+            student_data.get("address", "")
         ),
-        "photo": user.get(
+        "photo": user_data.get(
             "photo",
-            ""
+            student_data.get("photo", "")
         ),
-        "account_status": user.get(
+        "account_status": user_data.get(
             "account_status",
-            "active"
+            student_data.get("account_status", "active")
         ),
-        "must_change_password": user.get(
+        "must_change_password": user_data.get(
             "must_change_password",
             False
         )
@@ -115,14 +161,20 @@ def get_my_profile(
         "student_id": student_id
     })
 
-    if not user:
+    student = students_collection.find_one({
+        "student_id": student_id
+    })
+
+    if not user and not student:
         raise HTTPException(
             status_code=404,
             detail="User profile not found"
         )
 
+    base_user = user or student or {}
+
     return {
-        "user": format_user(user)
+        "user": format_user(base_user, student)
     }
 
 
@@ -161,6 +213,8 @@ def update_my_profile(
         "student_id",
         "intake",
         "role",
+        "department",
+        "email",
         "password",
         "photo",
         "account_status",
@@ -179,6 +233,7 @@ def update_my_profile(
             detail="No profile data provided"
         )
 
+    # 1. users collection එක update කිරීම
     users_collection.update_one(
         {
             "student_id": student_id
@@ -188,14 +243,44 @@ def update_my_profile(
         }
     )
 
+    # 2. students collection එකත් sync කිරීම
+    if user.get("role") == "student":
+        student_sync_data = {}
+        if "name" in update_data:
+            student_sync_data["name"] = update_data["name"]
+        if "year" in update_data:
+            student_sync_data["academic_year"] = update_data["year"]
+            student_sync_data["year"] = update_data["year"]
+        elif "academic_year" in update_data:
+            student_sync_data["academic_year"] = update_data["academic_year"]
+            student_sync_data["year"] = update_data["academic_year"]
+        if "semester" in update_data:
+            student_sync_data["semester"] = update_data["semester"]
+        if "group" in update_data:
+            student_sync_data["group"] = update_data["group"]
+
+        if student_sync_data:
+            students_collection.update_one(
+                {
+                    "student_id": student_id
+                },
+                {
+                    "$set": student_sync_data
+                }
+            )
+
     updated_user = users_collection.find_one({
+        "student_id": student_id
+    })
+    updated_student = students_collection.find_one({
         "student_id": student_id
     })
 
     return {
         "message": "Profile updated successfully",
         "user": format_user(
-            updated_user
+            updated_user,
+            updated_student
         )
     }
 
@@ -406,7 +491,9 @@ def delete_profile_image(
             "successfully"
         )
     }
-    # ---------------------------------
+
+
+# ---------------------------------
 # CHANGE logged-in user's password
 # ---------------------------------
 

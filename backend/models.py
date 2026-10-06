@@ -25,6 +25,9 @@ class ProfileUpdate(BaseModel):
     name: Optional[str] = None
     department: Optional[str] = None
     year: Optional[str] = None
+    academic_year: Optional[str] = None
+    semester: Optional[str] = None
+    group: Optional[str] = None
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
     address: Optional[str] = None

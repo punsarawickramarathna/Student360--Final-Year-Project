@@ -5,6 +5,7 @@
 
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import StreamingResponse
+from typing import Any
 
 import os
 import sys
@@ -23,6 +24,21 @@ from collections import deque
 from ultralytics import YOLO
 from mtcnn import MTCNN
 from keras_facenet import FaceNet
+import torch
+
+# ============================================================
+# HARDWARE ACCELERATION (INTEL CPU / NVIDIA RTX GPU)
+# ============================================================
+CUDA_AVAILABLE = torch.cuda.is_available()
+if CUDA_AVAILABLE:
+    YOLO_DEVICE = 0
+    YOLO_HALF = True
+    print(f"🚀 [CUDA ACCELERATION] PyTorch GPU detected: {torch.cuda.get_device_name(0)}")
+    print("⚡ Offloading YOLO models to NVIDIA RTX GPU with FP16 half-precision (device=0, half=True)")
+else:
+    YOLO_DEVICE = "cpu"
+    YOLO_HALF = False
+    print("⚠️ [CPU FALLBACK] CUDA unavailable. Running on Intel CPU.")
 
 from database import (
     attendance_collection,
@@ -154,6 +170,114 @@ DRAW_BEHAVIOR_DEBUG_BOXES = False
 PHONE_DEBUG_INTERVAL = 0.35
 
 
+# ============================================================
+# NON-BLOCKING THREADED CAMERA FEED
+# ============================================================
+
+class ThreadedCamera:
+    """
+    High-Performance Non-Blocking Threaded Camera Feed.
+    - Captures in a background daemon thread to drop stale frames and eliminate latency.
+    - Utilizes cv2.CAP_DSHOW on Windows for instantaneous camera initialization.
+    - Caps capture resolution to 640x480 (or 1280x720) @ 30 FPS.
+    - Thread-safe frame reading and clean resource release.
+    """
+    def __init__(self, src=0, width=640, height=480, fps=30):
+        self.src = src
+        self.width = int(width)
+        self.height = int(height)
+        self.fps = int(fps)
+        self.is_camera = isinstance(src, int) or (isinstance(src, str) and src.isdigit())
+        self.stopped = False
+        self.lock = threading.Lock()
+        self.latest_frame = None
+        self.grabbed = False
+        self.cap = None
+        self.thread = None
+
+        self._init_source()
+
+    def _init_source(self):
+        if self.is_camera:
+            cam_idx = int(self.src)
+            try:
+                self.cap = cv2.VideoCapture(cam_idx, cv2.CAP_DSHOW)
+                if not self.cap or not self.cap.isOpened():
+                    if self.cap:
+                        self.cap.release()
+                    self.cap = cv2.VideoCapture(cam_idx)
+            except Exception:
+                self.cap = cv2.VideoCapture(cam_idx)
+        else:
+            self.cap = cv2.VideoCapture(self.src)
+
+        if self.cap is not None and self.cap.isOpened():
+            try:
+                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+                self.cap.set(cv2.CAP_PROP_FPS, self.fps)
+                self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            except Exception:
+                pass
+
+            ret, frame = self.cap.read()
+            if ret and frame is not None:
+                self.latest_frame = frame
+                self.grabbed = True
+
+    def start(self):
+        if self.cap is not None and self.cap.isOpened():
+            self.stopped = False
+            self.thread = threading.Thread(target=self._capture_worker, daemon=True)
+            self.thread.start()
+        return self
+
+    def _capture_worker(self):
+        while not self.stopped:
+            if self.cap is None or not self.cap.isOpened():
+                break
+
+            ret, frame = self.cap.read()
+            if not ret or frame is None:
+                if not self.is_camera:
+                    with self.lock:
+                        self.grabbed = False
+                    break
+                time.sleep(0.005)
+                continue
+
+            with self.lock:
+                self.latest_frame = frame
+                self.grabbed = True
+
+            if not self.is_camera:
+                time.sleep(1.0 / max(1, self.fps))
+
+    def read(self):
+        with self.lock:
+            if not self.grabbed or self.latest_frame is None:
+                return False, None
+            return True, self.latest_frame.copy()
+
+    def isOpened(self):
+        return self.cap is not None and self.cap.isOpened() and not self.stopped
+
+    def release(self):
+        self.stopped = True
+        if self.thread is not None and self.thread.is_alive():
+            self.thread.join(timeout=0.6)
+            self.thread = None
+        if self.cap is not None:
+            try:
+                self.cap.release()
+            except Exception:
+                pass
+            self.cap = None
+        with self.lock:
+            self.grabbed = False
+            self.latest_frame = None
+
+
 def resolve_model_file(filename):
     paths = [
         os.path.join(MODELS_DIR, filename),
@@ -184,7 +308,7 @@ except Exception as e:
     label_encoder = None
 
 
-active_ai_session = {
+active_ai_session: dict[str, Any] = {
     "is_running": False,
     "mode": None,
     "cap": None,
@@ -225,7 +349,7 @@ def normalize_behavior(label):
         "normal": "attentive",
         "notattentive": "not_attentive",
     }
-    value = str(value).strip().lower().replace(" ", "_").replace("-", "_")
+    value = value.strip().lower().replace(" ", "_").replace("-", "_")
     return aliases.get(value, value)
 
 
@@ -498,7 +622,14 @@ def get_yolo_model(mode):
     if os.path.exists(model_path):
         if model_path not in _yolo_cache:
             print("Loading custom YOLO behavior model:", model_path)
-            _yolo_cache[model_path] = YOLO(model_path)
+            model = YOLO(model_path)
+            if CUDA_AVAILABLE:
+                try:
+                    model.to(YOLO_DEVICE)
+                    print(f"✅ YOLO behavior model offloaded to GPU device={YOLO_DEVICE}")
+                except Exception as e:
+                    print("YOLO CUDA transfer note:", e)
+            _yolo_cache[model_path] = model
             try:
                 print("BEHAVIOR MODEL CLASSES:", _yolo_cache[model_path].names)
             except Exception:
@@ -508,7 +639,14 @@ def get_yolo_model(mode):
     fallback_key = "yolov8n.pt"
     if fallback_key not in _yolo_cache:
         print("Custom behavior model not found. Using YOLOv8n fallback.")
-        _yolo_cache[fallback_key] = YOLO(fallback_key)
+        model = YOLO(fallback_key)
+        if CUDA_AVAILABLE:
+            try:
+                model.to(YOLO_DEVICE)
+                print(f"✅ Fallback YOLO model offloaded to GPU device={YOLO_DEVICE}")
+            except Exception as e:
+                print("YOLO CUDA transfer note:", e)
+        _yolo_cache[fallback_key] = model
         try:
             print("FALLBACK MODEL CLASSES:", _yolo_cache[fallback_key].names)
         except Exception:
@@ -535,7 +673,14 @@ def get_phone_model(mode):
     if os.path.exists(phone_path):
         if phone_path not in _yolo_cache:
             print("Loading dedicated phone-capable model:", phone_path)
-            _yolo_cache[phone_path] = YOLO(phone_path)
+            model = YOLO(phone_path)
+            if CUDA_AVAILABLE:
+                try:
+                    model.to(YOLO_DEVICE)
+                    print(f"✅ Dedicated phone model offloaded to GPU device={YOLO_DEVICE}")
+                except Exception as e:
+                    print("Phone model CUDA transfer note:", e)
+            _yolo_cache[phone_path] = model
             try:
                 print("PHONE MODEL CLASSES:", _yolo_cache[phone_path].names)
             except Exception:
@@ -565,6 +710,8 @@ def detect_phone_evidence(frame, phone_yolo, students):
             conf=PHONE_RAW_CONFIDENCE,
             imgsz=960,
             iou=0.45,
+            device=YOLO_DEVICE,
+            half=YOLO_HALF,
             verbose=False,
         )
         for result in results:
@@ -629,6 +776,8 @@ def detect_phone_evidence(frame, phone_yolo, students):
                 conf=0.20,
                 imgsz=640,
                 iou=0.45,
+                device=YOLO_DEVICE,
+                half=YOLO_HALF,
                 verbose=False,
             )
         except Exception as e:
@@ -687,6 +836,12 @@ def get_person_detector():
         else:
             print("Loading dedicated YOLOv8n person detector...")
             _person_detector = YOLO("yolov8n.pt")
+        if CUDA_AVAILABLE:
+            try:
+                _person_detector.to(YOLO_DEVICE)
+                print(f"✅ Person detector offloaded to GPU device={YOLO_DEVICE}")
+            except Exception as e:
+                print("Person detector CUDA transfer note:", e)
         return _person_detector
     except Exception as e:
         print("PERSON DETECTOR LOAD ERROR:", repr(e))
@@ -838,7 +993,7 @@ def save_evidence(student_id, behavior_label, frame):
 
         evidence_record = {
             "student_id": str(student_id),
-            "behavior": str(normalize_behavior(behavior_label)),
+            "behavior": normalize_behavior(behavior_label),
             "image": filename,
             "image_path": f"evidence/{filename}",
             "date": timestamp,
@@ -996,14 +1151,16 @@ def detect_persons(frame, behavior_yolo):
 
     if person_model is not None:
         try:
-            results = person_model(
+            results: Any = person_model(
                 frame,
                 conf=PERSON_DETECTION_CONFIDENCE,
                 classes=[0],
+                device=YOLO_DEVICE,
+                half=YOLO_HALF,
                 verbose=False,
             )
             for result in results:
-                boxes = result.boxes
+                boxes = getattr(result, "boxes", None)
                 if boxes is None:
                     continue
                 for box in boxes:
@@ -1030,7 +1187,13 @@ def detect_persons(frame, behavior_yolo):
     # Fallback only if dedicated person detection returned nothing.
     if not persons:
         try:
-            results = behavior_yolo(frame, conf=0.20, verbose=False)
+            results = behavior_yolo(
+                frame,
+                conf=0.20,
+                device=YOLO_DEVICE,
+                half=YOLO_HALF,
+                verbose=False,
+            )
             names = behavior_yolo.names
             for result in results:
                 boxes = result.boxes
@@ -1103,11 +1266,13 @@ def detect_persons_and_phones(frame):
         return persons, phones
 
     try:
-        results = model(
+        results: Any = model(
             frame,
             conf=min(PERSON_DETECTION_CONFIDENCE, OBJECT_PHONE_CONFIDENCE),
             classes=[0, 67],
             imgsz=640,
+            device=YOLO_DEVICE,
+            half=YOLO_HALF,
             verbose=False,
         )
     except Exception as e:
@@ -1115,7 +1280,7 @@ def detect_persons_and_phones(frame):
         return persons, phones
 
     for result in results:
-        boxes = result.boxes
+        boxes = getattr(result, "boxes", None)
         if boxes is None:
             continue
 
@@ -1518,6 +1683,8 @@ def detect_behaviors_inside_student_crops(frame, behavior_yolo, students):
                 conf=PERSON_CROP_BEHAVIOR_CONFIDENCE,
                 imgsz=640,
                 iou=0.45,
+                device=YOLO_DEVICE,
+                half=YOLO_HALF,
                 verbose=False,
             )
         except Exception as e:
@@ -1838,21 +2005,27 @@ def generate_video_stream():
 
     frame_counter = 0
     last_phone_debug_time = 0.0
+    consecutive_frame_misses = 0
 
     try:
         while active_ai_session["is_running"]:
             ret, frame = cap.read()
             if not ret or frame is None:
-                print("CAMERA FRAME ERROR")
-                break
+                consecutive_frame_misses += 1
+                if consecutive_frame_misses > 60:
+                    print("CAMERA FRAME TIMEOUT (No frames received for 600ms)")
+                    break
+                time.sleep(0.01)
+                continue
 
+            consecutive_frame_misses = 0
             current_time = time.time()
             timestamp = datetime.now()
             frame_counter += 1
             active_ai_session["frame_counter"] = frame_counter
 
             # --------------------------------------------------
-            # 1. BEHAVIOR YOLO + BYTETRACK
+            # 1. BEHAVIOR YOLO + BYTETRACK (CUDA FP16 ACCELERATED)
             # --------------------------------------------------
             # Restore the original working architecture: YOLO tracking with
             # ByteTrack. The behavior model produces student-level boxes, so
@@ -1872,6 +2045,8 @@ def generate_video_stream():
                     ),
                     imgsz=640,
                     iou=0.45,
+                    device=YOLO_DEVICE,
+                    half=YOLO_HALF,
                     verbose=False,
                 )
             except Exception as e:
@@ -2129,32 +2304,16 @@ async def start_camera(data: dict):
                 detail="Invalid monitoring mode",
             )
 
-        print("INITIALIZING STUDENT360 CAMERA...")
-        cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
-        # Keep webcam latency low by asking the driver for the smallest
-        # practical capture buffer. Some Windows camera drivers ignore this,
-        # so it is a best-effort setting.
-        try:
-            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        except Exception:
-            pass
-        if not cap.isOpened():
-            cap.release()
-            cap = cv2.VideoCapture(0)
-            try:
-                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-            except Exception:
-                pass
+        print("INITIALIZING STUDENT360 THREADED CAMERA (DIRECTSHOW, 640x480 @ 30 FPS)...")
+        cap = ThreadedCamera(src=0, width=640, height=480, fps=30).start()
+        time.sleep(0.15)  # Allow background daemon thread to grab first frame
 
         if not cap.isOpened():
             cap.release()
             raise HTTPException(
                 status_code=500,
-                detail="Unable to open webcam",
+                detail="Unable to open webcam with DirectShow/Default backend",
             )
-
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
         ret, test_frame = cap.read()
         if not ret or test_frame is None:
@@ -2219,13 +2378,22 @@ async def stop_camera():
 
     cap = active_ai_session.get("cap")
     if cap is not None:
-        cap.release()
-        print("CAMERA RELEASED")
+        try:
+            cap.release()
+        except Exception as e:
+            print("Camera release error:", repr(e))
+        active_ai_session["cap"] = None
+        print("THREADED CAMERA RELEASED CLEANLY")
+
+    try:
+        cv2.destroyAllWindows()
+    except Exception:
+        pass
 
     mode = active_ai_session["mode"]
     stats = active_ai_session["student_stats"]
-    session_id = active_ai_session["session_id"]
-    started_at = active_ai_session["started_at"]
+    session_id = str(active_ai_session.get("session_id") or "unknown")
+    started_at = active_ai_session.get("started_at") or datetime.now()
     ended_at = datetime.now()
 
     date_str = ended_at.strftime("%Y-%m-%d_%H-%M-%S")
@@ -2392,7 +2560,8 @@ async def stop_camera():
 
 @router.post("/process-video")
 async def process_video(file: UploadFile = File(...)):
-    filepath = os.path.join(UPLOAD_FOLDER, file.filename)
+    filename = file.filename or f"video_{uuid.uuid4().hex}.mp4"
+    filepath = os.path.join(UPLOAD_FOLDER, filename)
 
     try:
         with open(filepath, "wb") as buffer:
