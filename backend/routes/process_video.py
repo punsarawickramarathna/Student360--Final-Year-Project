@@ -72,18 +72,20 @@ EVIDENCE_FOLDER = os.path.join(UPLOAD_FOLDER, "evidence")
 ATTENDANCE_FOLDER = os.path.join(BASE_DIR, "attendance")
 MODELS_DIR = os.path.join(BASE_DIR, "models")
 AI_ENGINE_MODELS_DIR = os.path.abspath(os.path.join(BASE_DIR, "../ai_engine/models"))
+DEMO_VIDEOS_DIR = os.path.join(BASE_DIR, "demo_videos")
 
-for folder in [UPLOAD_FOLDER, SESSION_LOGS_FOLDER, EVIDENCE_FOLDER, ATTENDANCE_FOLDER]:
+for folder in [UPLOAD_FOLDER, SESSION_LOGS_FOLDER, EVIDENCE_FOLDER, ATTENDANCE_FOLDER, DEMO_VIDEOS_DIR]:
     os.makedirs(folder, exist_ok=True)
 
 # -------------------------
 # Face recognition settings
 # -------------------------
-FACE_RECOGNITION_INTERVAL = 12
-FACE_DETECTION_CONFIDENCE = 0.80
-FACE_RECOGNITION_THRESHOLD = 0.55
-FACE_CONFIDENCE_MARGIN = 0.05
-FACE_CACHE_SECONDS = 5.0
+FACE_RECOGNITION_INTERVAL = 6
+FACE_DETECTION_CONFIDENCE = 0.60
+FACE_RECOGNITION_THRESHOLD = 0.50
+FACE_CONFIDENCE_MARGIN = 0.02
+FACE_CACHE_SECONDS = 8.0
+IDENTITY_HOLD_SECONDS = 45.0
 
 # -------------------------
 # Person detection settings
@@ -104,27 +106,42 @@ OBJECT_PHONE_HOLD_SECONDS = 1.00
 BEHAVIOR_RAW_CONFIDENCE = 0.30
 PHONE_RAW_CONFIDENCE = 0.25
 SLEEPING_RAW_CONFIDENCE = 0.35
-CHEATING_RAW_CONFIDENCE = 0.35
+CHEATING_RAW_CONFIDENCE = 0.30
+
+# Hybrid exam fallback used only in Exam Proctor mode.
+# This does NOT replace the YOLO exam model; it supplements it when
+# suspicious head movement is obvious but the model confidence is weak.
+EXAM_HEAD_TURN_RATIO = 0.18
+EXAM_HEAD_TURN_CONFIRM_FRAMES = 3
+EXAM_FACE_MISSING_SECONDS = 1.20
+EXAM_HEURISTIC_HOLD_SECONDS = 0.90
+
+# Classroom sleeping fallback.
+# Used when the face becomes hidden because the student lays the head down.
+SLEEP_FACE_MISSING_SECONDS = 1.20
+SLEEP_HEAD_LOW_RATIO = 0.62
+SLEEP_HEURISTIC_HOLD_SECONDS = 0.60
+SLEEP_HEURISTIC_CONFIDENCE = 0.65
 
 # Temporal filtering prevents one bad frame from becoming an alert.
 # A behavior must have repeated evidence inside a short time window.
 # These are intentionally not simple consecutive-frame counters because
 # small phones can disappear for a frame or two while the student moves.
 PHONE_CONFIRM_FRAMES = 2
-SLEEPING_CONFIRM_FRAMES = 6
-CHEATING_CONFIRM_FRAMES = 4
-NOT_ATTENTIVE_CONFIRM_FRAMES = 5
+SLEEPING_CONFIRM_FRAMES = 3
+CHEATING_CONFIRM_FRAMES = 2
+NOT_ATTENTIVE_CONFIRM_FRAMES = 3
 ATTENTIVE_CONFIRM_FRAMES = 3
 
 PHONE_EVIDENCE_WINDOW = 2.00
-SLEEPING_EVIDENCE_WINDOW = 1.60
-CHEATING_EVIDENCE_WINDOW = 1.20
-NOT_ATTENTIVE_EVIDENCE_WINDOW = 1.20
+SLEEPING_EVIDENCE_WINDOW = 2.50
+CHEATING_EVIDENCE_WINDOW = 2.00
+NOT_ATTENTIVE_EVIDENCE_WINDOW = 2.00
 
 PHONE_MIN_AVERAGE_CONFIDENCE = 0.30
-SLEEPING_MIN_AVERAGE_CONFIDENCE = 0.52
-CHEATING_MIN_AVERAGE_CONFIDENCE = 0.50
-NOT_ATTENTIVE_MIN_AVERAGE_CONFIDENCE = 0.48
+SLEEPING_MIN_AVERAGE_CONFIDENCE = 0.42
+CHEATING_MIN_AVERAGE_CONFIDENCE = 0.40
+NOT_ATTENTIVE_MIN_AVERAGE_CONFIDENCE = 0.38
 
 # Once an alert is confirmed, do not immediately switch to attentive when
 # one frame is missed. But also do not hold an alert for too long.
@@ -152,6 +169,35 @@ DRAW_BEHAVIOR_DEBUG_BOXES = False
 
 # Print raw phone detections at most once per second.
 PHONE_DEBUG_INTERVAL = 0.35
+
+# ------------------------------------------------------------
+# DEMO / EXAM RELIABILITY SETTINGS
+# These do not change the normal classroom live-camera thresholds above.
+# ------------------------------------------------------------
+DEMO_PERSON_CONFIDENCE = 0.18
+DEMO_PERSON_IMGSZ = 768
+DEMO_OBJECT_DETECTION_INTERVAL = 2  # run YOLOv8n person/phone pass every 2 demo frames
+DEMO_BEHAVIOR_IMGSZ = 512
+DEMO_FACE_RECOGNITION_INTERVAL = 8
+DEMO_MAX_CATCHUP_FRAMES = 6
+DEMO_UNKNOWN_CONFIRM_SECONDS = 3.00
+DEMO_UNKNOWN_TRACK_TTL = 2.50
+
+DEMO_FACE_DETECTION_CONFIDENCE = 0.35
+DEMO_FACE_CANDIDATE_MIN_CONFIDENCE = 0.25
+DEMO_FACE_CANDIDATE_MIN_MARGIN = 0.005
+DEMO_FACE_CANDIDATE_CONFIRMATIONS = 2
+
+EXAM_CROP_CONFIDENCE_LIVE = 0.06
+EXAM_CROP_CONFIDENCE_DEMO = 0.22
+EXAM_VOTE_WINDOW_SECONDS = 1.80
+EXAM_CHEATING_MIN_SAMPLES_LIVE = 2
+EXAM_CHEATING_MIN_SAMPLES_DEMO = 3
+EXAM_CHEATING_MIN_RATIO_LIVE = 0.30
+EXAM_CHEATING_MIN_RATIO_DEMO = 0.70
+EXAM_CHEATING_MIN_AVG_LIVE = 0.18
+EXAM_CHEATING_MIN_AVG_DEMO = 0.42
+EXAM_CHEATING_IMMEDIATE_LIVE = 0.55
 
 
 def resolve_model_file(filename):
@@ -184,13 +230,161 @@ except Exception as e:
     label_encoder = None
 
 
+# ------------------------------------------------------------
+# DEMO-ONLY OPEN-SET FACE RECOVERY
+# ------------------------------------------------------------
+# train_faces.py stores the original FaceNet embeddings in
+# models/face_training_data.pkl as {"X": embeddings, "y": student_ids}.
+# We use those embeddings only as a second verifier for difficult/far faces
+# in prerecorded demo videos. Live recognition remains unchanged.
+
+_demo_training_X_norm = None
+_demo_training_y = None
+
+
+def load_demo_training_embeddings():
+    global _demo_training_X_norm, _demo_training_y
+
+    _demo_training_X_norm = None
+    _demo_training_y = None
+
+    path = resolve_model_file("face_training_data.pkl")
+
+    if not os.path.exists(path):
+        print("DEMO FACE TRAINING DATA NOT FOUND:", path)
+        return False
+
+    try:
+        data = joblib.load(path)
+
+        if not isinstance(data, dict):
+            return False
+
+        X = data.get("X")
+        y = data.get("y")
+
+        if X is None or y is None:
+            return False
+
+        X = np.asarray(X, dtype=np.float32)
+        y = np.asarray([str(v) for v in y], dtype=object)
+
+        if X.ndim != 2 or X.shape[1] != 512 or len(X) != len(y):
+            print("DEMO FACE TRAINING DATA INVALID:", X.shape, len(y))
+            return False
+
+        norms = np.linalg.norm(X, axis=1, keepdims=True)
+        norms = np.maximum(norms, 1e-8)
+
+        _demo_training_X_norm = X / norms
+        _demo_training_y = y
+
+        print(
+            "Demo face embedding verifier loaded:",
+            len(X),
+            "samples for",
+            len(np.unique(y)),
+            "students",
+        )
+        return True
+
+    except Exception as exc:
+        print("DEMO FACE TRAINING DATA LOAD ERROR:", repr(exc))
+        return False
+
+
+load_demo_training_embeddings()
+
+
+def demo_embedding_identity(face_image):
+    """
+    Demo-only open-set identity verifier.
+
+    Returns a known student only when:
+      1. multiple stored embeddings of the SAME student are similar,
+      2. the best student is clearly better than the runner-up.
+
+    This is safer than just lowering the SVM threshold globally.
+    """
+    if (
+        face_image is None
+        or face_image.size == 0
+        or embedder is None
+        or _demo_training_X_norm is None
+        or _demo_training_y is None
+    ):
+        return "Unknown", 0.0, 0.0
+
+    try:
+        rgb = cv2.cvtColor(face_image, cv2.COLOR_BGR2RGB)
+        resized = cv2.resize(
+            rgb,
+            (160, 160),
+            interpolation=cv2.INTER_CUBIC,
+        )
+
+        embedding = embedder.embeddings([resized])
+        embedding = np.asarray(embedding, dtype=np.float32).reshape(-1)
+
+        if embedding.shape[0] != 512 or not np.all(np.isfinite(embedding)):
+            return "Unknown", 0.0, 0.0
+
+        norm = float(np.linalg.norm(embedding))
+        if norm <= 1e-8:
+            return "Unknown", 0.0, 0.0
+
+        embedding = embedding / norm
+        similarities = _demo_training_X_norm @ embedding
+
+        student_scores = {}
+
+        for sid in np.unique(_demo_training_y):
+            idx = np.where(_demo_training_y == sid)[0]
+            sims = similarities[idx]
+
+            if len(sims) == 0:
+                continue
+
+            # Average the best few stored examples for robustness.
+            top = np.sort(sims)[-min(4, len(sims)):]
+            student_scores[str(sid)] = float(np.mean(top))
+
+        if not student_scores:
+            return "Unknown", 0.0, 0.0
+
+        ordered = sorted(
+            student_scores.items(),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+
+        best_label, best_score = ordered[0]
+        second_score = ordered[1][1] if len(ordered) > 1 else -1.0
+        gap = best_score - second_score
+
+        # Moderately tolerant because this path is already restricted to
+        # prerecorded demo crops and still passes through temporal voting.
+        if best_score >= 0.42 and gap >= 0.010:
+            return best_label, best_score, gap
+
+        return "Unknown", best_score, gap
+
+    except Exception as exc:
+        print("DEMO EMBEDDING ID ERROR:", repr(exc))
+        return "Unknown", 0.0, 0.0
+
+
 active_ai_session = {
     "is_running": False,
     "mode": None,
+    "source_type": "camera",
+    "source_path": None,
+    "source_fps": 0.0,
     "cap": None,
     "student_stats": {},
     "tracker_to_student_map": {},
     "recognized_faces": [],
+    "unknown_faces": [],
     "person_detections": [],
     "session_id": None,
     "started_at": None,
@@ -198,6 +392,12 @@ active_ai_session = {
     "behavior_states": {},
     "object_detections": [],
     "last_object_detection_time": 0.0,
+    "student_identity_cache": {},
+    "exam_heuristic_state": {},
+    "sleep_heuristic_state": {},
+    "demo_face_votes": {},
+    "demo_unknown_tracks": {},
+    "exam_vote_history": {},
 }
 
 camera_lock = threading.Lock()
@@ -413,7 +613,7 @@ class LiveBehaviorStabilizer:
 
         # Keep only recent evidence. One second is enough for live temporal
         # voting without allowing an old behavior to poison a later action.
-        while state["evidence"] and now - state["evidence"][0]["time"] > 1.50:
+        while state["evidence"] and now - state["evidence"][0]["time"] > 2.50:
             state["evidence"].popleft()
 
         current = state["current"]
@@ -485,6 +685,109 @@ class LiveBehaviorStabilizer:
 
 
 behavior_stabilizer = LiveBehaviorStabilizer()
+
+
+
+class ExamBehaviorStabilizer:
+    """
+    Stable exam-mode state machine.
+
+    Normal state: non_cheating
+    Alert state: cheating
+    """
+
+    def __init__(self):
+        self.states = {}
+
+    def reset(self):
+        self.states.clear()
+
+    def _state(self, student_id):
+        sid = str(student_id)
+        if sid not in self.states:
+            self.states[sid] = {
+                "current": "non_cheating",
+                "confidence": 1.0,
+                "history": deque(maxlen=40),
+                "last_cheating": 0.0,
+            }
+        return self.states[sid]
+
+    def update(self, student_id, raw_label, confidence, now):
+        state = self._state(student_id)
+        label = normalize_behavior(raw_label)
+        confidence = float(confidence or 0.0)
+
+        # Store only exam labels.
+        if label in {"cheating", "non_cheating"}:
+            state["history"].append({
+                "label": label,
+                "confidence": confidence,
+                "time": now,
+            })
+
+        # Keep only recent evidence.
+        while (
+            state["history"]
+            and now - state["history"][0]["time"] > 2.5
+        ):
+            state["history"].popleft()
+
+        cheating_samples = [
+            item
+            for item in state["history"]
+            if item["label"] == "cheating"
+            and now - item["time"] <= CHEATING_EVIDENCE_WINDOW
+        ]
+
+        if cheating_samples:
+            cheating_avg = (
+                sum(item["confidence"] for item in cheating_samples)
+                / len(cheating_samples)
+            )
+        else:
+            cheating_avg = 0.0
+
+        if (
+            len(cheating_samples) >= CHEATING_CONFIRM_FRAMES
+            and cheating_avg >= CHEATING_MIN_AVERAGE_CONFIDENCE
+        ):
+            state["current"] = "cheating"
+            state["confidence"] = cheating_avg
+            state["last_cheating"] = now
+            return state["current"], state["confidence"]
+
+        # Hold cheating briefly so one missed frame does not flicker.
+        if (
+            state["current"] == "cheating"
+            and now - state["last_cheating"] <= ALERT_HOLD_SECONDS
+        ):
+            return state["current"], state["confidence"]
+
+        non_samples = [
+            item
+            for item in state["history"]
+            if item["label"] == "non_cheating"
+            and now - item["time"] <= 1.0
+        ]
+
+        if non_samples:
+            non_avg = (
+                sum(item["confidence"] for item in non_samples)
+                / len(non_samples)
+            )
+            state["current"] = "non_cheating"
+            state["confidence"] = non_avg
+        else:
+            # No cheating confirmed = normal exam state.
+            state["current"] = "non_cheating"
+            state["confidence"] = 1.0
+
+        return state["current"], state["confidence"]
+
+
+exam_behavior_stabilizer = ExamBehaviorStabilizer()
+
 
 
 # ============================================================
@@ -808,10 +1111,12 @@ def update_student_statistics(student_id, behavior_label, current_time, timestam
     elif label == "phone_use":
         stats["phone_use_sec"] += elapsed
         stats["not_attentive_sec"] += elapsed
+    elif label == "non_cheating":
+        stats["non_cheating_sec"] += elapsed
     elif label in {"attentive", "person"}:
         stats["attentive_sec"] += elapsed
     else:
-        stats["non_cheating_sec"] += elapsed
+        stats["not_attentive_sec"] += elapsed
 
     return stats
 
@@ -897,13 +1202,22 @@ def recognize_face(face_image):
         ):
             return predicted_label, best_confidence
 
+        # Balanced fallback for known students:
+        # keep an uncertain face Unknown unless the SVM's direct class agrees
+        # AND the probability/margin are still reasonably strong.
         direct_prediction = face_svm.predict(embedding)
         if len(direct_prediction) > 0:
             direct_index = int(direct_prediction[0])
-            direct_label = str(label_encoder.inverse_transform([direct_index])[0])
-            if best_confidence >= 0.50 and direct_label == predicted_label:
-                return direct_label, best_confidence
+            direct_label = str(
+                label_encoder.inverse_transform([direct_index])[0]
+            )
 
+            if (
+                best_confidence >= 0.50
+                and margin >= 0.03
+                and direct_label == predicted_label
+            ):
+                return direct_label, best_confidence
     except Exception as e:
         print("FACE RECOGNITION ERROR:", repr(e))
 
@@ -972,6 +1286,30 @@ def update_face_cache(new_faces):
 
     active_ai_session["recognized_faces"] = list(by_student.values())
     return active_ai_session["recognized_faces"]
+
+
+def update_unknown_face_cache(new_faces):
+    now = time.time()
+    current = [
+        face for face in new_faces
+        if face.get("student_id") == "Unknown"
+    ]
+    existing = [
+        face for face in active_ai_session.get("unknown_faces", [])
+        if now - face.get("last_seen", 0.0) <= 1.0
+    ]
+    active_ai_session["unknown_faces"] = current if current else existing
+    return active_ai_session["unknown_faces"]
+
+
+def get_current_unknown_faces():
+    now = time.time()
+    valid = [
+        face for face in active_ai_session.get("unknown_faces", [])
+        if now - face.get("last_seen", 0.0) <= 1.0
+    ]
+    active_ai_session["unknown_faces"] = valid
+    return valid
 
 
 def get_current_recognized_faces():
@@ -1103,11 +1441,28 @@ def detect_persons_and_phones(frame):
         return persons, phones
 
     try:
-        results = model(
+        source_type = active_ai_session.get("source_type", "camera")
+
+        person_conf = (
+            DEMO_PERSON_CONFIDENCE
+            if source_type == "demo"
+            else PERSON_DETECTION_CONFIDENCE
+        )
+
+        detector_imgsz = (
+            DEMO_PERSON_IMGSZ
+            if source_type == "demo"
+            else 640
+        )
+
+        results = model.track(
             frame,
-            conf=min(PERSON_DETECTION_CONFIDENCE, OBJECT_PHONE_CONFIDENCE),
+            persist=True,
+            tracker="bytetrack.yaml",
+            conf=min(person_conf, OBJECT_PHONE_CONFIDENCE),
             classes=[0, 67],
-            imgsz=640,
+            imgsz=detector_imgsz,
+            iou=0.50,
             verbose=False,
         )
     except Exception as e:
@@ -1135,15 +1490,36 @@ def detect_persons_and_phones(frame):
                 x1, y1, x2, y2 = mapped
 
                 if cls_id == 0:
-                    if confidence < PERSON_DETECTION_CONFIDENCE:
+                    source_type = active_ai_session.get("source_type", "camera")
+                    required_person_conf = (
+                        DEMO_PERSON_CONFIDENCE
+                        if source_type == "demo"
+                        else PERSON_DETECTION_CONFIDENCE
+                    )
+
+                    if confidence < required_person_conf:
                         continue
-                    if x2 - x1 < MIN_PERSON_WIDTH or y2 - y1 < MIN_PERSON_HEIGHT:
+
+                    # In demo videos, distant students can have smaller person
+                    # boxes than the webcam case.
+                    min_w = 32 if source_type == "demo" else MIN_PERSON_WIDTH
+                    min_h = 60 if source_type == "demo" else MIN_PERSON_HEIGHT
+
+                    if x2 - x1 < min_w or y2 - y1 < min_h:
                         continue
+
+                    track_id = None
+                    try:
+                        if box.id is not None:
+                            track_id = int(box.id[0])
+                    except Exception:
+                        track_id = None
 
                     persons.append({
                         "box": mapped,
                         "center": box_center(mapped),
                         "confidence": confidence,
+                        "track_id": track_id,
                         "source": "yolov8n_person",
                     })
 
@@ -1345,6 +1721,712 @@ def match_faces_to_persons(persons, faces):
         student.pop("_match_score", None)
 
     return list(unique.values())
+
+
+
+
+def _demo_face_candidate(face_image):
+    """
+    Return the best SVM identity candidate even when normal one-frame
+    recognition is not confident enough. Used only for repeated DEMO voting.
+    """
+    if (
+        face_image is None
+        or face_image.size == 0
+        or embedder is None
+        or face_svm is None
+        or label_encoder is None
+    ):
+        return None, 0.0, 0.0
+
+    try:
+        rgb_face = cv2.cvtColor(face_image, cv2.COLOR_BGR2RGB)
+        resized = cv2.resize(
+            rgb_face,
+            (160, 160),
+            interpolation=cv2.INTER_CUBIC,
+        )
+
+        embedding = embedder.embeddings([resized])
+        embedding = np.asarray(embedding, dtype=np.float32)
+
+        if embedding.ndim == 1:
+            embedding = np.expand_dims(embedding, axis=0)
+
+        if (
+            embedding.ndim != 2
+            or embedding.shape[1] != 512
+            or not np.all(np.isfinite(embedding))
+        ):
+            return None, 0.0, 0.0
+
+        probabilities = np.asarray(
+            face_svm.predict_proba(embedding)[0],
+            dtype=float,
+        )
+
+        if probabilities.size == 0:
+            return None, 0.0, 0.0
+
+        order = np.argsort(probabilities)[::-1]
+        best_index = int(order[0])
+        best_conf = float(probabilities[best_index])
+        second_conf = (
+            float(probabilities[int(order[1])])
+            if len(order) > 1
+            else 0.0
+        )
+
+        margin = best_conf - second_conf
+        label = str(
+            label_encoder.inverse_transform([best_index])[0]
+        )
+
+        return label, best_conf, margin
+
+    except Exception as exc:
+        print("DEMO FACE CANDIDATE ERROR:", repr(exc))
+        return None, 0.0, 0.0
+
+
+def _demo_face_vote(person_box, label, confidence, margin, now):
+    """
+    Accept a difficult/far face only after the same candidate repeats on the
+    same body. This protects genuine unknown people from one weak SVM guess.
+    """
+    if not label:
+        return None, 0.0
+
+    votes = active_ai_session.setdefault("demo_face_votes", {})
+
+    best_key = None
+    best_iou = 0.0
+
+    for key, state in votes.items():
+        old_box = state.get("person_box")
+        if old_box is None:
+            continue
+
+        overlap = calculate_iou(person_box, old_box)
+        if overlap > best_iou:
+            best_iou = overlap
+            best_key = key
+
+    if best_key is None or best_iou < 0.20:
+        best_key = str(uuid.uuid4())
+        votes[best_key] = {
+            "person_box": person_box,
+            "samples": deque(maxlen=10),
+            "last_seen": now,
+        }
+
+    state = votes[best_key]
+    state["person_box"] = person_box
+    state["last_seen"] = now
+    state["samples"].append({
+        "label": str(label),
+        "confidence": float(confidence),
+        "margin": float(margin),
+        "time": now,
+    })
+
+    # Remove stale body/candidate tracks.
+    for key in list(votes.keys()):
+        if now - float(votes[key].get("last_seen", 0.0)) > 4.0:
+            votes.pop(key, None)
+
+    samples = [
+        sample
+        for sample in state["samples"]
+        if now - float(sample["time"]) <= 3.5
+    ]
+
+    same = [
+        sample
+        for sample in samples
+        if sample["label"] == str(label)
+    ]
+
+    if len(same) < DEMO_FACE_CANDIDATE_CONFIRMATIONS:
+        return None, 0.0
+
+    avg_conf = sum(s["confidence"] for s in same) / len(same)
+    avg_margin = sum(s["margin"] for s in same) / len(same)
+
+    if (
+        avg_conf >= DEMO_FACE_CANDIDATE_MIN_CONFIDENCE
+        and avg_margin >= DEMO_FACE_CANDIDATE_MIN_MARGIN
+    ):
+        return str(label), float(avg_conf)
+
+    return None, 0.0
+
+
+def recover_demo_faces_from_person_crops(frame, persons, existing_faces):
+    """
+    DEMO ONLY:
+    Retry face detection/recognition inside each person's upper-body crop.
+
+    This is especially important for students farther from the camera, whose
+    faces are too small in the full-frame MTCNN pass.
+    """
+    if active_ai_session.get("source_type") != "demo":
+        return []
+
+    if detector is None or not persons:
+        return []
+
+    frame_h, frame_w = frame.shape[:2]
+    now = time.time()
+    recovered = []
+
+    for person in persons:
+        person_box = person["box"]
+
+        # A good known face is already inside this person.
+        if any(
+            face.get("student_id") != "Unknown"
+            and face.get("center") is not None
+            and point_inside_box(face["center"], person_box)
+            for face in existing_faces
+        ):
+            continue
+
+        px1, py1, px2, py2 = person_box
+        pw = max(1, px2 - px1)
+        ph = max(1, py2 - py1)
+
+        x1 = max(0, int(px1 - 0.08 * pw))
+        x2 = min(frame_w, int(px2 + 0.08 * pw))
+        y1 = max(0, int(py1 - 0.08 * ph))
+        y2 = min(frame_h, int(py1 + 0.78 * ph))
+
+        crop = frame[y1:y2, x1:x2]
+
+        if crop.size == 0:
+            continue
+
+        ch, cw = crop.shape[:2]
+        largest = max(ch, cw)
+
+        if largest < 420:
+            scale = 3.0
+        elif largest < 700:
+            scale = 2.2
+        else:
+            scale = 1.5
+
+        enlarged = cv2.resize(
+            crop,
+            None,
+            fx=scale,
+            fy=scale,
+            interpolation=cv2.INTER_CUBIC,
+        )
+
+        try:
+            rgb = cv2.cvtColor(enlarged, cv2.COLOR_BGR2RGB)
+            detections = detector.detect_faces(rgb)
+        except Exception as exc:
+            print("DEMO CROP FACE DETECTION ERROR:", repr(exc))
+            continue
+
+        best_recovered = None
+
+        for detection in detections:
+            det_conf = float(detection.get("confidence", 0.0))
+            if det_conf < DEMO_FACE_DETECTION_CONFIDENCE:
+                continue
+
+            raw_box = detection.get("box")
+            if not raw_box or len(raw_box) < 4:
+                continue
+
+            dx, dy, dw, dh = raw_box
+
+            fx1 = x1 + int(dx / scale)
+            fy1 = y1 + int(dy / scale)
+            fx2 = x1 + int((dx + dw) / scale)
+            fy2 = y1 + int((dy + dh) / scale)
+
+            face_box = clamp_box(
+                (fx1, fy1, fx2, fy2),
+                frame_w,
+                frame_h,
+            )
+
+            if face_box is None:
+                continue
+
+            ax1, ay1, ax2, ay2 = face_box
+
+            if ax2 - ax1 < 14 or ay2 - ay1 < 14:
+                continue
+
+            face_crop = frame[ay1:ay2, ax1:ax2]
+
+            # First apply the exact original recognition method.
+            student_id, identity_conf = recognize_face(face_crop)
+
+            # Second verifier for small/far trained faces:
+            # compare against the original stored FaceNet training embeddings.
+            if student_id == "Unknown":
+                emb_label, emb_score, emb_gap = demo_embedding_identity(
+                    face_crop
+                )
+
+                if emb_label != "Unknown":
+                    voted_id, voted_conf = _demo_face_vote(
+                        person_box,
+                        emb_label,
+                        emb_score,
+                        max(emb_gap, 0.03),
+                        now,
+                    )
+
+                    if voted_id is not None:
+                        student_id = voted_id
+                        identity_conf = voted_conf
+
+            # Final fallback: repeated SVM candidate voting.
+            if student_id == "Unknown":
+                label, conf, margin = _demo_face_candidate(face_crop)
+
+                voted_id, voted_conf = _demo_face_vote(
+                    person_box,
+                    label,
+                    conf,
+                    margin,
+                    now,
+                )
+
+                if voted_id is not None:
+                    student_id = voted_id
+                    identity_conf = voted_conf
+
+            item = {
+                "box": face_box,
+                "center": box_center(face_box),
+                "student_id": student_id,
+                "confidence": float(identity_conf),
+                "face_detection_confidence": det_conf,
+                "area": box_area(face_box),
+                "last_seen": now,
+                "source": "demo_person_crop_face",
+            }
+
+            if best_recovered is None:
+                best_recovered = item
+            elif (
+                best_recovered.get("student_id") == "Unknown"
+                and student_id != "Unknown"
+            ):
+                best_recovered = item
+            elif (
+                student_id == best_recovered.get("student_id")
+                and identity_conf > best_recovered.get("confidence", 0.0)
+            ):
+                best_recovered = item
+
+        if best_recovered is not None:
+            recovered.append(best_recovered)
+
+    return recovered
+
+
+def match_faces_to_persons_demo(persons, faces):
+    """
+    DEMO-only one-to-one face/person assignment.
+
+    A large foreground person box can contain a background student's face.
+    The original person->face search can therefore select the wrong face.
+    Here each face chooses the most plausible person, and each person/ID is
+    used once.
+    """
+    if not persons or not faces:
+        return []
+
+    candidate_pairs = []
+
+    for face in faces:
+        if face.get("student_id") == "Unknown":
+            continue
+
+        center = face.get("center")
+        face_box = face.get("box")
+
+        if center is None or face_box is None:
+            continue
+
+        for person_index, person in enumerate(persons):
+            person_box = person["box"]
+
+            if not point_inside_box(center, person_box):
+                continue
+
+            px1, py1, px2, py2 = person_box
+            person_h = max(1.0, float(py2 - py1))
+            person_w = max(1.0, float(px2 - px1))
+
+            rel_x = (center[0] - px1) / person_w
+            rel_y = (center[1] - py1) / person_h
+
+            # A face should normally be in the upper/central part of its person.
+            if not (0.10 <= rel_x <= 0.90 and 0.02 <= rel_y <= 0.62):
+                continue
+
+            # Prefer smaller/tighter person boxes around the face.
+            score = (
+                box_area(person_box)
+                - 200000.0 * float(face.get("confidence", 0.0))
+            )
+
+            candidate_pairs.append(
+                (
+                    score,
+                    person_index,
+                    face,
+                )
+            )
+
+    candidate_pairs.sort(key=lambda item: item[0])
+
+    used_persons = set()
+    used_students = set()
+    students = []
+
+    for _, person_index, face in candidate_pairs:
+        sid = str(face["student_id"])
+
+        if person_index in used_persons or sid in used_students:
+            continue
+
+        person = persons[person_index]
+
+        students.append({
+            "person_box": person["box"],
+            "person_confidence": person.get("confidence", 0.0),
+            "face_box": face["box"],
+            "student_id": sid,
+            "face_confidence": float(face.get("confidence", 0.0)),
+            "center": person["center"],
+        })
+
+        used_persons.add(person_index)
+        used_students.add(sid)
+
+    return students
+
+
+def get_demo_unidentified_people(persons, known_students, now):
+    """
+    DEMO ONLY:
+    Every person should eventually have a visible frame.
+
+    If a person is not matched to a known student, keep an IoU-based unknown
+    track. Show UNKNOWN only after it remains unmatched long enough, preventing
+    momentary face-recognition misses from flashing UNKNOWN.
+    """
+    if active_ai_session.get("source_type") != "demo":
+        return []
+
+    tracks = active_ai_session.setdefault("demo_unknown_tracks", {})
+    known_boxes = [student["person_box"] for student in known_students]
+
+    # Also include recently verified body locations. A trained student should
+    # not flash UNKNOWN just because one demo face frame is weak.
+    for cached in active_ai_session.get("student_identity_cache", {}).values():
+        cached_box = cached.get("person_box")
+        last_person_seen = float(cached.get("last_person_seen", 0.0))
+
+        if (
+            cached_box is not None
+            and now - last_person_seen <= 4.0
+        ):
+            known_boxes.append(cached_box)
+
+    unmatched = []
+
+    for person in persons:
+        box = person["box"]
+
+        if any(calculate_iou(box, known_box) > 0.25 for known_box in known_boxes):
+            continue
+
+        unmatched.append(person)
+
+    seen_keys = set()
+
+    for person in unmatched:
+        box = person["box"]
+
+        best_key = None
+        best_iou = 0.0
+
+        for key, state in tracks.items():
+            old_box = state.get("box")
+            if old_box is None:
+                continue
+
+            overlap = calculate_iou(box, old_box)
+            if overlap > best_iou:
+                best_iou = overlap
+                best_key = key
+
+        if best_key is None or best_iou < 0.20:
+            best_key = str(uuid.uuid4())
+            tracks[best_key] = {
+                "box": box,
+                "first_seen": now,
+                "last_seen": now,
+                "confidence": person.get("confidence", 0.0),
+            }
+        else:
+            tracks[best_key]["box"] = box
+            tracks[best_key]["last_seen"] = now
+            tracks[best_key]["confidence"] = person.get("confidence", 0.0)
+
+        seen_keys.add(best_key)
+
+    for key in list(tracks.keys()):
+        if now - float(tracks[key].get("last_seen", 0.0)) > DEMO_UNKNOWN_TRACK_TTL:
+            tracks.pop(key, None)
+
+    result = []
+
+    for key, state in tracks.items():
+        if key not in seen_keys:
+            continue
+
+        if now - float(state.get("first_seen", now)) < DEMO_UNKNOWN_CONFIRM_SECONDS:
+            continue
+
+        # Recheck against current known boxes before drawing.
+        if any(calculate_iou(state["box"], kb) > 0.20 for kb in known_boxes):
+            continue
+
+        result.append({
+            "person_box": state["box"],
+            "person_confidence": state.get("confidence", 0.0),
+            "face_box": None,
+        })
+
+    return result
+
+
+# ============================================================
+# PERSISTENT STUDENT IDENTITY
+# ============================================================
+
+def _person_match_score(old_box, new_box):
+    """Lower score means a better body match."""
+    iou = calculate_iou(old_box, new_box)
+
+    ocx, ocy = box_center(old_box)
+    ncx, ncy = box_center(new_box)
+
+    distance = ((ocx - ncx) ** 2 + (ocy - ncy) ** 2) ** 0.5
+
+    ow = max(1, old_box[2] - old_box[0])
+    oh = max(1, old_box[3] - old_box[1])
+    scale = max(100.0, (ow * ow + oh * oh) ** 0.5)
+
+    # Reject a clearly different person.  This is only the fallback when a
+    # stable ByteTrack person ID is unavailable.  Keep it conservative so an
+    # identity cannot jump to a nearby student in a crowded scene.
+    if iou < 0.05 and distance > scale * 0.50:
+        return None
+
+    return (1.0 - iou) + 0.50 * (distance / scale)
+
+
+def update_persistent_students(persons, recognized_faces, now):
+    """
+    Face recognition is used to VERIFY identity.
+    After that, the verified student ID can stay attached to the same
+    detected body while the face is temporarily hidden.
+
+    This is important for sleeping/head-on-desk situations.
+    """
+    cache = active_ai_session.setdefault("student_identity_cache", {})
+
+    if active_ai_session.get("source_type") == "demo":
+        fresh_students = match_faces_to_persons_demo(
+            persons,
+            recognized_faces,
+        )
+    else:
+        # Preserve the original working live-camera association.
+        fresh_students = match_faces_to_persons(
+            persons,
+            recognized_faces,
+        )
+
+    used_person_indices = set()
+
+    # Fresh face match has highest authority.
+    for student in fresh_students:
+        sid = str(student["student_id"])
+
+        best_idx = None
+        best_iou = -1.0
+
+        for idx, person in enumerate(persons):
+            iou = calculate_iou(student["person_box"], person["box"])
+            if iou > best_iou:
+                best_iou = iou
+                best_idx = idx
+
+        if best_idx is not None:
+            used_person_indices.add(best_idx)
+
+        cached = dict(student)
+        if best_idx is not None:
+            cached["person_track_id"] = persons[best_idx].get("track_id")
+        cached["last_face_seen"] = now
+        cached["last_person_seen"] = now
+        cached["identity_source"] = "face"
+
+        cache[sid] = cached
+
+    # Continue following the body when the face disappears.
+    for sid, cached in list(cache.items()):
+        if any(str(s["student_id"]) == sid for s in fresh_students):
+            continue
+
+        last_face_seen = float(cached.get("last_face_seen", 0.0))
+        if now - last_face_seen > IDENTITY_HOLD_SECONDS:
+            continue
+
+        old_box = cached.get("person_box")
+        if old_box is None:
+            continue
+
+        best_idx = None
+        best_score = None
+
+        # Prefer the same ByteTrack PERSON id.  This prevents an identified
+        # student from being transferred to a neighbouring body box.
+        cached_track_id = cached.get("person_track_id")
+        if cached_track_id is not None:
+            for idx, person in enumerate(persons):
+                if idx in used_person_indices:
+                    continue
+                if person.get("track_id") == cached_track_id:
+                    best_idx = idx
+                    break
+
+        # If ByteTrack temporarily has no ID, use conservative spatial matching.
+        if best_idx is None:
+            for idx, person in enumerate(persons):
+                if idx in used_person_indices:
+                    continue
+
+                score = _person_match_score(old_box, person["box"])
+                if score is None:
+                    continue
+
+                if best_score is None or score < best_score:
+                    best_score = score
+                    best_idx = idx
+
+        if best_idx is not None:
+            person = persons[best_idx]
+            used_person_indices.add(best_idx)
+
+            cached["person_box"] = person["box"]
+            cached["person_confidence"] = person["confidence"]
+            cached["center"] = person["center"]
+            if person.get("track_id") is not None:
+                cached["person_track_id"] = person.get("track_id")
+            cached["last_person_seen"] = now
+            cached["identity_source"] = "body_track"
+
+    active_students = []
+
+    for sid, cached in list(cache.items()):
+        if now - float(cached.get("last_face_seen", 0.0)) > IDENTITY_HOLD_SECONDS:
+            cache.pop(sid, None)
+            continue
+
+        # Body must still be present recently.
+        body_hold = (
+            3.5
+            if active_ai_session.get("source_type") == "demo"
+            else 2.0
+        )
+
+        if now - float(cached.get("last_person_seen", 0.0)) <= body_hold:
+            active_students.append({
+                "person_box": cached["person_box"],
+                "person_confidence": cached.get("person_confidence", 0.0),
+                "face_box": cached.get("face_box", cached["person_box"]),
+                "student_id": sid,
+                "face_confidence": cached.get("face_confidence", 0.0),
+                "center": cached.get("center", box_center(cached["person_box"])),
+                "identity_source": cached.get("identity_source", "body_track"),
+            })
+
+    return active_students
+
+
+def match_unknown_faces_to_persons(persons, unknown_faces, known_students):
+    unknown_people = []
+    known_boxes = [s["person_box"] for s in known_students]
+
+    for person in persons:
+        person_box = person["box"]
+
+        if any(calculate_iou(person_box, kb) > 0.45 for kb in known_boxes):
+            continue
+
+        faces = [
+            f for f in unknown_faces
+            if point_inside_box(f["center"], person_box)
+        ]
+        if not faces:
+            continue
+
+        faces.sort(
+            key=lambda f: (
+                f.get("face_detection_confidence", 0.0),
+                f.get("area", 0),
+            ),
+            reverse=True,
+        )
+
+        unknown_people.append({
+            "person_box": person_box,
+            "face_box": faces[0]["box"],
+        })
+
+    return unknown_people
+
+
+def draw_unknown_person_boxes(frame, unknown_people):
+    for item in unknown_people:
+        x1, y1, x2, y2 = item["person_box"]
+        color = (0, 165, 255)
+        label = "UNKNOWN"
+
+        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 3)
+        cv2.rectangle(
+            frame,
+            (x1, max(0, y1 - 32)),
+            (min(frame.shape[1] - 1, x1 + 150), y1),
+            color,
+            -1,
+        )
+        cv2.putText(
+            frame,
+            label,
+            (x1 + 6, y1 - 8),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.70,
+            (255, 255, 255),
+            2,
+            cv2.LINE_AA,
+        )
 
 
 # ============================================================
@@ -1692,6 +2774,819 @@ def stabilize_student_behaviors(raw_student_behaviors, students, now):
     return final
 
 
+
+
+def _exam_heuristic_state(student_id):
+    states = active_ai_session.setdefault("exam_heuristic_state", {})
+    sid = str(student_id)
+
+    if sid not in states:
+        states[sid] = {
+            "head_turn_count": 0,
+            "face_missing_since": None,
+            "last_suspicious": 0.0,
+        }
+
+    return states[sid]
+
+
+def exam_head_movement_evidence(student, now):
+    """
+    Return (is_suspicious, score, reason).
+
+    Hybrid fallback for the Exam Proctor preset:
+      - strong lateral face displacement relative to the body
+      - or the face becomes hidden for a sustained period while the body
+        remains tracked after prior identity verification
+
+    This is intentionally conservative and only runs in exam mode.
+    """
+    sid = str(student["student_id"])
+    state = _exam_heuristic_state(sid)
+
+    person_box = student["person_box"]
+    px1, py1, px2, py2 = person_box
+    person_width = max(1.0, float(px2 - px1))
+    person_center_x = (px1 + px2) / 2.0
+
+    identity_source = student.get("identity_source", "face")
+
+    # Face is currently visible.
+    if identity_source == "face":
+        state["face_missing_since"] = None
+
+        face_box = student.get("face_box")
+        if face_box is None:
+            state["head_turn_count"] = max(0, state["head_turn_count"] - 1)
+            return False, 0.0, "no_face_box"
+
+        fx1, fy1, fx2, fy2 = face_box
+        face_center_x = (fx1 + fx2) / 2.0
+
+        lateral_ratio = abs(face_center_x - person_center_x) / person_width
+
+        if lateral_ratio >= EXAM_HEAD_TURN_RATIO:
+            state["head_turn_count"] += 1
+        else:
+            state["head_turn_count"] = max(0, state["head_turn_count"] - 1)
+
+        if state["head_turn_count"] >= EXAM_HEAD_TURN_CONFIRM_FRAMES:
+            state["last_suspicious"] = now
+            score = min(0.95, 0.55 + lateral_ratio)
+            return True, score, f"lateral_head_turn:{lateral_ratio:.2f}"
+
+        if (
+            float(state.get("last_suspicious", 0.0)) > 0.0
+            and now - float(state.get("last_suspicious", 0.0))
+            <= EXAM_HEURISTIC_HOLD_SECONDS
+        ):
+            return True, 0.70, "confirmed_head_turn_hold"
+
+        return False, lateral_ratio, "face_centered"
+
+    # Face-hidden alone is NOT cheating. However, if a sustained lateral
+    # head turn was already confirmed less than a moment ago, keep that
+    # confirmed signal briefly while MTCNN temporarily loses the face.
+    if state["face_missing_since"] is None:
+        state["face_missing_since"] = now
+
+    if (
+        float(state.get("last_suspicious", 0.0)) > 0.0
+        and now - float(state.get("last_suspicious", 0.0))
+        <= EXAM_HEURISTIC_HOLD_SECONDS
+    ):
+        return True, 0.72, "confirmed_head_turn_hold"
+
+    return False, 0.0, "face_hidden_no_cheating_rule"
+
+
+def fuse_exam_model_and_head_movement(raw_exam_behaviors, students, now):
+    """
+    LIVE CAMERA EXAM fallback only.
+
+    Keep exam_model.pt as the primary detector. If the model misses a
+    sustained, clearly lateral head turn, use repeated face/body geometry
+    as supplementary cheating evidence.
+
+    Demo video is intentionally excluded from this heuristic.
+    """
+    fused = dict(raw_exam_behaviors)
+
+    if active_ai_session.get("source_type", "camera") != "camera":
+        return fused
+
+    for student in students:
+        sid = student["student_id"]
+        raw = fused.get(
+            sid,
+            {
+                "label": "non_cheating",
+                "box": student["person_box"],
+                "confidence": 1.0,
+                "track_id": None,
+                "source": "exam_default",
+            },
+        )
+
+        # If YOLO already says cheating, keep it.
+        if normalize_behavior(raw.get("label")) == "cheating":
+            continue
+
+        suspicious, score, reason = exam_head_movement_evidence(
+            student,
+            now,
+        )
+
+        if suspicious:
+            fused[sid] = {
+                "label": "cheating",
+                "box": student["person_box"],
+                "confidence": max(CHEATING_RAW_CONFIDENCE, float(score)),
+                "track_id": raw.get("track_id"),
+                "source": f"exam_head_movement:{reason}",
+            }
+
+            print(
+                f"LIVE EXAM HEURISTIC: student={sid}, "
+                f"cheating_score={score:.3f}, reason={reason}"
+            )
+
+    return fused
+
+
+
+def _sleep_heuristic_state(student_id):
+    states = active_ai_session.setdefault("sleep_heuristic_state", {})
+    sid = str(student_id)
+
+    if sid not in states:
+        states[sid] = {
+            "face_missing_since": None,
+            "low_head_count": 0,
+            "last_sleep_signal": 0.0,
+        }
+
+    return states[sid]
+
+
+def classroom_sleeping_evidence(student, now):
+    """
+    Return (is_sleeping, score, reason).
+
+    Intended for the classroom preset only.
+
+    Sleeping evidence is produced when:
+      1. A previously verified student's face disappears while the body
+         remains tracked for a short continuous period, OR
+      2. The visible face/head is very low inside the person's body box.
+
+    This supplements classroom_model.pt rather than replacing it.
+    """
+    sid = str(student["student_id"])
+    state = _sleep_heuristic_state(sid)
+
+    person_box = student["person_box"]
+    px1, py1, px2, py2 = person_box
+    person_height = max(1.0, float(py2 - py1))
+
+    identity_source = student.get("identity_source", "face")
+
+    # --------------------------------------------------------
+    # Case 1: face currently visible
+    # --------------------------------------------------------
+    if identity_source == "face":
+        state["face_missing_since"] = None
+
+        face_box = student.get("face_box")
+        if face_box is None:
+            state["low_head_count"] = 0
+            state["last_sleep_signal"] = 0.0
+            return False, 0.0, "no_face_box"
+
+        fx1, fy1, fx2, fy2 = face_box
+        face_center_y = (fy1 + fy2) / 2.0
+        head_low_ratio = (face_center_y - py1) / person_height
+
+        # Visible upright faces must not become sleeping.
+        if head_low_ratio < SLEEP_HEAD_LOW_RATIO:
+            state["low_head_count"] = 0
+            state["last_sleep_signal"] = 0.0
+            return False, head_low_ratio, "visible_upright"
+
+        state["low_head_count"] += 1
+
+        if state["low_head_count"] >= 4:
+            state["last_sleep_signal"] = now
+            score = min(
+                0.90,
+                SLEEP_HEURISTIC_CONFIDENCE
+                + max(0.0, head_low_ratio - SLEEP_HEAD_LOW_RATIO),
+            )
+            return True, score, f"head_very_low:{head_low_ratio:.2f}"
+
+        return False, head_low_ratio, "head_low_not_confirmed"
+
+    # --------------------------------------------------------
+    # Case 2: face hidden, but the already-identified body is
+    # still tracked. This is the common head-on-desk case.
+    # --------------------------------------------------------
+    if state["face_missing_since"] is None:
+        state["face_missing_since"] = now
+
+    missing_for = now - state["face_missing_since"]
+
+    # When a previously VERIFIED student's face disappears while the same
+    # body is still being tracked for a sustained period, treat it as a
+    # sleeping fallback. Phone-use is filtered before this function is used.
+    if missing_for >= SLEEP_FACE_MISSING_SECONDS:
+        state["last_sleep_signal"] = now
+        score = min(
+            0.82,
+            SLEEP_HEURISTIC_CONFIDENCE
+            + min(missing_for, 2.0) * 0.06,
+        )
+        return True, score, f"verified_face_hidden:{missing_for:.2f}s"
+
+    return False, 0.0, "face_temporarily_hidden"
+
+
+def validate_native_sleeping(student, raw_label):
+    """Suppress obvious native YOLO sleeping false positives."""
+    if normalize_behavior(raw_label) != "sleeping":
+        return True
+
+    if student.get("identity_source") != "face":
+        return True
+
+    face_box = student.get("face_box")
+    person_box = student.get("person_box")
+    if face_box is None or person_box is None:
+        return True
+
+    px1, py1, px2, py2 = person_box
+    fx1, fy1, fx2, fy2 = face_box
+
+    person_height = max(1.0, float(py2 - py1))
+    face_center_y = (fy1 + fy2) / 2.0
+    head_low_ratio = (face_center_y - py1) / person_height
+
+    return head_low_ratio >= 0.58
+
+
+def fuse_classroom_sleeping(
+    raw_student_behaviors,
+    students,
+    physical_phone_assignments,
+    now,
+):
+    """
+    Fuse classroom_model.pt output with a posture/face-loss sleeping fallback.
+
+    Important:
+    - A real physical phone near the student prevents the sleeping fallback
+      from overriding phone_use.
+    - Native YOLO sleeping remains valid and is kept.
+    """
+    fused = dict(raw_student_behaviors)
+
+    for student in students:
+        sid = student["student_id"]
+
+        raw = fused.get(
+            sid,
+            {
+                "label": "attentive",
+                "box": student["person_box"],
+                "priority": live_behavior_priority("attentive"),
+                "confidence": 1.0,
+                "source": "default",
+                "track_id": None,
+            },
+        )
+
+        raw_label = normalize_behavior(raw.get("label", "attentive"))
+
+        # Never reinterpret an actual phone-use event as sleeping.
+        if sid in physical_phone_assignments or raw_label == "phone_use":
+            continue
+
+        # Native sleeping must also be posture-plausible.
+        if raw_label == "sleeping":
+            source_type = active_ai_session.get("source_type", "camera")
+
+            if source_type == "demo":
+                raw_conf = float(raw.get("confidence", 0.0))
+
+                face_box = student.get("face_box")
+                person_box = student.get("person_box")
+                identity_source = student.get("identity_source", "face")
+
+                posture_ok = False
+
+                if identity_source == "face" and face_box is not None and person_box is not None:
+                    px1, py1, px2, py2 = person_box
+                    fx1, fy1, fx2, fy2 = face_box
+                    person_h = max(1.0, float(py2 - py1))
+                    face_center_y = (fy1 + fy2) / 2.0
+                    head_low_ratio = (face_center_y - py1) / person_h
+
+                    # Writing students often look down. Require a much lower
+                    # head position in demo video before accepting sleeping.
+                    posture_ok = head_low_ratio >= 0.68
+
+                elif identity_source == "body_track":
+                    # If the face is genuinely hidden, native YOLO sleeping can
+                    # still be accepted, but require stronger confidence.
+                    posture_ok = raw_conf >= 0.55
+
+                if not (posture_ok and raw_conf >= 0.50):
+                    fused[sid] = {
+                        "label": "attentive",
+                        "box": student["person_box"],
+                        "priority": live_behavior_priority("attentive"),
+                        "confidence": 1.0,
+                        "source": "demo_sleep_false_positive_suppressed",
+                        "track_id": raw.get("track_id"),
+                    }
+                    continue
+
+                # Strong native sleeping + plausible posture: keep it.
+                continue
+
+            # LIVE CAMERA: preserve the original working logic.
+            if validate_native_sleeping(student, raw_label):
+                continue
+
+            fused[sid] = {
+                "label": "attentive",
+                "box": student["person_box"],
+                "priority": live_behavior_priority("attentive"),
+                "confidence": 1.0,
+                "source": "sleep_false_positive_suppressed",
+                "track_id": raw.get("track_id"),
+            }
+            print(
+                f"SLEEP SUPPRESSED: student={sid}, "
+                "reason=face_visible_upright"
+            )
+            continue
+
+        # DEMO: do not manufacture sleeping merely because a face is lost.
+        # LIVE: keep the original head-down fallback that already works.
+        if active_ai_session.get("source_type") == "demo":
+            is_sleeping, score, reason = False, 0.0, "demo_no_sleep_heuristic"
+        else:
+            is_sleeping, score, reason = classroom_sleeping_evidence(
+                student,
+                now,
+            )
+
+        if is_sleeping:
+            fused[sid] = {
+                "label": "sleeping",
+                "box": student["person_box"],
+                "priority": live_behavior_priority("sleeping"),
+                "confidence": max(SLEEPING_RAW_CONFIDENCE, float(score)),
+                "source": f"sleep_posture_fallback:{reason}",
+                "track_id": raw.get("track_id"),
+            }
+
+            print(
+                f"SLEEP HEURISTIC: student={sid}, "
+                f"score={score:.3f}, reason={reason}"
+            )
+
+    return fused
+
+
+
+def detect_exam_student_crop_behaviors(frame, exam_model, students, confidence):
+    """
+    Exam-only second pass.
+
+    Each recognized student's body is analyzed separately, so:
+      * a small cheating action has more pixels,
+      * a behavior cannot easily be assigned to a neighboring student.
+    """
+    if not students:
+        return []
+
+    frame_h, frame_w = frame.shape[:2]
+    detections = []
+
+    for student in students:
+        source_type = active_ai_session.get("source_type", "camera")
+
+        if source_type == "camera":
+            # Live exam: include more shoulder/head/hand context.
+            # This helps the exam model see head turns, side glances,
+            # hand movement and nearby cheating cues.
+            crop_box = expand_box(
+                student["person_box"],
+                frame_w,
+                frame_h,
+                left=0.16,
+                right=0.16,
+                top=0.10,
+                bottom=0.12,
+            )
+        else:
+            # Preserve the already-working demo crop.
+            crop_box = expand_box(
+                student["person_box"],
+                frame_w,
+                frame_h,
+                left=0.05,
+                right=0.05,
+                top=0.05,
+                bottom=0.08,
+            )
+
+        if crop_box is None:
+            continue
+
+        x1, y1, x2, y2 = crop_box
+        crop = frame[y1:y2, x1:x2]
+
+        if crop.size == 0 or crop.shape[0] < 80 or crop.shape[1] < 50:
+            continue
+
+        try:
+            crop_imgsz = (
+                704
+                if active_ai_session.get("source_type") == "camera"
+                else 448
+            )
+
+            results = exam_model.predict(
+                crop,
+                conf=confidence,
+                imgsz=crop_imgsz,
+                iou=0.45,
+                verbose=False,
+            )
+        except Exception as exc:
+            print("EXAM STUDENT CROP ERROR:", repr(exc))
+            continue
+
+        best_by_label = {}
+
+        for result in results:
+            if result.boxes is None:
+                continue
+
+            for box in result.boxes:
+                try:
+                    cls_id = int(box.cls[0])
+                    names = exam_model.names
+                    raw_label = names[cls_id] if cls_id in names else ""
+                    label = normalize_behavior(raw_label)
+
+                    if label not in {"cheating", "non_cheating"}:
+                        continue
+
+                    conf = float(box.conf[0]) if box.conf is not None else 0.0
+
+                    if conf < confidence:
+                        continue
+
+                    bx1, by1, bx2, by2 = box.xyxy[0].tolist()
+
+                    mapped = clamp_box(
+                        (
+                            x1 + bx1,
+                            y1 + by1,
+                            x1 + bx2,
+                            y1 + by2,
+                        ),
+                        frame_w,
+                        frame_h,
+                    )
+
+                    if mapped is None:
+                        continue
+
+                    previous = best_by_label.get(label)
+
+                    if previous is None or conf > previous["confidence"]:
+                        best_by_label[label] = {
+                            "box": mapped,
+                            "label": label,
+                            "confidence": conf,
+                            "track_id": None,
+                            "student_hint": student["student_id"],
+                            "source": "exam_student_crop",
+                        }
+
+                except Exception:
+                    continue
+
+        detections.extend(best_by_label.values())
+
+    return detections
+
+
+def _choose_exam_observation_for_student(
+    student,
+    behavior_detections,
+):
+    """
+    Choose one raw exam observation for one student.
+
+    LIVE camera:
+      - cheating is allowed through when the exam model repeatedly produces
+        even moderate cheating evidence.
+      - this improves cheating recall.
+
+    DEMO video:
+      - non_cheating wins unless cheating is clearly stronger.
+      - this reduces false cheating in multi-student prerecorded scenes.
+    """
+    sid = str(student["student_id"])
+    source_type = active_ai_session.get("source_type", "camera")
+
+    crop_candidates = []
+    full_candidates = []
+
+    for detection in behavior_detections:
+        label = normalize_behavior(detection.get("label"))
+        confidence = float(detection.get("confidence", 0.0))
+
+        if label not in {"cheating", "non_cheating"}:
+            continue
+
+        hint = detection.get("student_hint")
+
+        if hint is not None:
+            if str(hint) == sid:
+                crop_candidates.append(detection)
+            continue
+
+        matched = find_best_student_for_behavior(
+            detection["box"],
+            label,
+            [student],
+            None,
+        )
+
+        if matched is not None:
+            full_candidates.append(detection)
+
+    # Student crop is much safer than full-frame assignment.
+    candidates = crop_candidates if crop_candidates else full_candidates
+
+    if not candidates:
+        return {
+            "label": None,
+            "box": student["person_box"],
+            "confidence": 0.0,
+            "track_id": None,
+            "source": "no_observation",
+        }
+
+    best_cheating = None
+    best_normal = None
+
+    for candidate in candidates:
+        label = normalize_behavior(candidate["label"])
+        conf = float(candidate["confidence"])
+
+        if label == "cheating":
+            if best_cheating is None or conf > float(best_cheating["confidence"]):
+                best_cheating = candidate
+        else:
+            if best_normal is None or conf > float(best_normal["confidence"]):
+                best_normal = candidate
+
+    if best_cheating is not None and best_normal is not None:
+        cheating_conf = float(best_cheating["confidence"])
+        normal_conf = float(best_normal["confidence"])
+
+        if source_type == "camera":
+            # Live exam: do not throw away moderate cheating evidence merely
+            # because non_cheating is slightly stronger in the same frame.
+            # Temporal voting below decides whether it is real.
+            if cheating_conf >= 0.10:
+                best = best_cheating
+            else:
+                best = best_normal
+        else:
+            # Demo: require cheating to clearly beat non_cheating.
+            if cheating_conf >= max(0.30, normal_conf + 0.08):
+                best = best_cheating
+            else:
+                best = best_normal
+
+    elif best_cheating is not None:
+        cheating_conf = float(best_cheating["confidence"])
+
+        if source_type == "camera":
+            best = best_cheating if cheating_conf >= 0.10 else None
+        else:
+            best = best_cheating if cheating_conf >= 0.30 else None
+
+        if best is None:
+            return {
+                "label": None,
+                "box": student["person_box"],
+                "confidence": 0.0,
+                "track_id": None,
+                "source": "no_observation",
+            }
+
+    else:
+        best = best_normal
+
+    return {
+        "label": normalize_behavior(best["label"]),
+        "box": best["box"],
+        "confidence": float(best["confidence"]),
+        "track_id": best.get("track_id"),
+        "source": best.get("source", "exam_model"),
+    }
+
+
+def stabilize_exam_model_votes(raw_exam_behaviors, students, now):
+    """
+    Model-only temporal exam decision.
+
+    IMPORTANT:
+      * Only real exam_model.pt observations enter the vote history.
+      * A missed detection is NOT converted into a synthetic 1.0 non_cheating vote.
+      * Existing live/demo thresholds are preserved.
+    """
+    histories = active_ai_session.setdefault("exam_vote_history", {})
+    source_type = active_ai_session.get("source_type", "camera")
+
+    if source_type == "demo":
+        min_samples = EXAM_CHEATING_MIN_SAMPLES_DEMO
+        min_ratio = EXAM_CHEATING_MIN_RATIO_DEMO
+        min_avg = EXAM_CHEATING_MIN_AVG_DEMO
+    else:
+        min_samples = EXAM_CHEATING_MIN_SAMPLES_LIVE
+        min_ratio = EXAM_CHEATING_MIN_RATIO_LIVE
+        min_avg = EXAM_CHEATING_MIN_AVG_LIVE
+
+    final = {}
+
+    for student in students:
+        sid = str(student["student_id"])
+        raw = raw_exam_behaviors.get(student["student_id"])
+
+        history = histories.setdefault(sid, deque(maxlen=40))
+
+        raw_label = None
+        raw_confidence = 0.0
+        raw_box = student["person_box"]
+        raw_source = "no_observation"
+        raw_track_id = None
+
+        if raw is not None:
+            raw_box = raw.get("box", student["person_box"])
+            raw_source = raw.get("source", "exam_model")
+            raw_track_id = raw.get("track_id")
+
+            value = raw.get("label")
+            if value is not None:
+                normalized = normalize_behavior(value)
+                if normalized in {"cheating", "non_cheating"}:
+                    raw_label = normalized
+                    raw_confidence = float(raw.get("confidence", 0.0))
+
+        # Add ONLY a real model observation.
+        if raw_label in {"cheating", "non_cheating"}:
+            history.append({
+                "label": raw_label,
+                "confidence": raw_confidence,
+                "time": now,
+            })
+
+        while (
+            history
+            and now - float(history[0]["time"]) > EXAM_VOTE_WINDOW_SECONDS
+        ):
+            history.popleft()
+
+        recent = list(history)
+        cheating_samples = [
+            item for item in recent if item["label"] == "cheating"
+        ]
+        normal_samples = [
+            item for item in recent if item["label"] == "non_cheating"
+        ]
+
+        total = len(cheating_samples) + len(normal_samples)
+        cheating_ratio = (
+            len(cheating_samples) / total if total > 0 else 0.0
+        )
+        cheating_avg = (
+            sum(item["confidence"] for item in cheating_samples)
+            / len(cheating_samples)
+            if cheating_samples
+            else 0.0
+        )
+
+        strong_live_cheating = (
+            source_type == "camera"
+            and raw_label == "cheating"
+            and raw_confidence >= EXAM_CHEATING_IMMEDIATE_LIVE
+        )
+
+        if strong_live_cheating:
+            # A very strong current live-camera cheating prediction can alert
+            # immediately; moderate predictions still require temporal evidence.
+            final_label = "cheating"
+            final_conf = raw_confidence
+        elif (
+            len(cheating_samples) >= min_samples
+            and cheating_ratio >= min_ratio
+            and cheating_avg >= min_avg
+        ):
+            final_label = "cheating"
+            final_conf = cheating_avg
+        else:
+            final_label = "non_cheating"
+            final_conf = (
+                sum(item["confidence"] for item in normal_samples)
+                / len(normal_samples)
+                if normal_samples
+                else 0.0
+            )
+
+        final[student["student_id"]] = {
+            "label": final_label,
+            "confidence": float(final_conf),
+            "phone_state": None,
+            "box": raw_box,
+            "source": raw_source,
+            "track_id": raw_track_id,
+        }
+
+        print(
+            f"FINAL EXAM BEHAVIOR: student={sid}, "
+            f"behavior={final_label}, conf={final_conf:.3f}, "
+            f"raw={raw_label}:{raw_confidence:.3f}, "
+            f"samples={len(recent)}, cheating_ratio={cheating_ratio:.2f}"
+        )
+
+    return final
+
+def assign_exam_behaviors_to_students(behavior_detections, students):
+    result = {}
+
+    for student in students:
+        result[student["student_id"]] = _choose_exam_observation_for_student(
+            student,
+            behavior_detections,
+        )
+
+    return result
+
+
+def stabilize_exam_behaviors(raw_exam_behaviors, students, now):
+    final = {}
+
+    for student in students:
+        sid = student["student_id"]
+
+        raw = raw_exam_behaviors.get(
+            sid,
+            {
+                "label": "non_cheating",
+                "confidence": 1.0,
+                "box": student["person_box"],
+                "track_id": None,
+                "source": "exam_default",
+            },
+        )
+
+        final_label, final_confidence = exam_behavior_stabilizer.update(
+            sid,
+            raw["label"],
+            raw["confidence"],
+            now,
+        )
+
+        final[sid] = {
+            "label": final_label,
+            "confidence": final_confidence,
+            "phone_state": None,
+            "box": raw.get("box", student["person_box"]),
+            "source": raw.get("source", "exam_default"),
+            "track_id": raw.get("track_id"),
+        }
+
+        print(
+            f"FINAL EXAM BEHAVIOR: student={sid}, "
+            f"behavior={final_label}, "
+            f"conf={final_confidence:.3f}, "
+            f"raw={raw['label']}:{float(raw['confidence']):.3f}"
+        )
+
+    return final
+
+
+
 # ============================================================
 # DRAWING
 # ============================================================
@@ -1764,7 +3659,7 @@ def draw_student_box(frame, student, behavior_label, behavior_confidence, phone_
         cv2.LINE_AA,
     )
 
-    if DRAW_FACE_DEBUG_BOX:
+    if DRAW_FACE_DEBUG_BOX and student.get("identity_source") == "face":
         fx1, fy1, fx2, fy2 = student["face_box"]
         cv2.rectangle(frame, (fx1, fy1), (fx2, fy2), (255, 180, 0), 1)
 
@@ -1802,6 +3697,9 @@ def generate_video_stream():
         return
 
     mode = active_ai_session["mode"]
+    source_type = active_ai_session.get("source_type", "camera")
+    source_fps = float(active_ai_session.get("source_fps", 0.0) or 0.0)
+    frame_interval = (1.0 / source_fps) if source_type == "demo" and source_fps > 0 else 0.0
     print("Loading behavior YOLO model...")
 
     try:
@@ -1812,9 +3710,10 @@ def generate_video_stream():
         active_ai_session["is_running"] = False
         return
 
-    print("LIVE VIDEO STREAM STARTED")
+    print("AI VIDEO STREAM STARTED")
+    print("INPUT SOURCE:", source_type.upper())
     print("MAIN STUDENT BOX: YOLO PERSON DETECTION")
-    print("FACE BOX: RECOGNITION ONLY")
+    print("FACE BOX: recognition + UNKNOWN support")
     print("BEHAVIOR: YOLO + BYTETRACK + STUDENT-LEVEL ASSOCIATION + CONSERVATIVE TEMPORAL VOTING")
     print("BEHAVIOR RAW CONFIDENCE:", BEHAVIOR_RAW_CONFIDENCE)
     print("PHONE RAW CONFIDENCE:", PHONE_RAW_CONFIDENCE)
@@ -1828,7 +3727,13 @@ def generate_video_stream():
     print("SLEEPING CONFIRM EVIDENCE:", SLEEPING_CONFIRM_FRAMES)
     print("PERSON CROP BEHAVIOR:", PERSON_CROP_BEHAVIOR_ENABLED)
     print("PERSON CROP ONLY IF NO PHONE:", PERSON_CROP_ONLY_IF_NO_PHONE)
-    print("PHONE SOURCES: classroom_model.pt + yolov8n cell-phone class")
+    if mode == "classroom":
+        print("ACTIVE PRESET: CLASSROOM")
+        print("CLASSROOM BEHAVIORS: attentive, not_attentive, phone_use, sleeping")
+        print("PHONE SOURCES: classroom_model.pt + yolov8n cell-phone class")
+    else:
+        print("ACTIVE PRESET: EXAM")
+        print("EXAM BEHAVIORS: cheating, non_cheating")
     print("OBJECT DETECTOR INTERVAL:", OBJECT_DETECTION_INTERVAL)
     print("PHYSICAL PHONE CONFIDENCE:", OBJECT_PHONE_CONFIDENCE)
     try:
@@ -1841,10 +3746,40 @@ def generate_video_stream():
 
     try:
         while active_ai_session["is_running"]:
+            loop_started = time.time()
+
             ret, frame = cap.read()
+
             if not ret or frame is None:
-                print("CAMERA FRAME ERROR")
-                break
+                if source_type == "demo":
+                    print("DEMO VIDEO ENDED - RESTARTING FROM BEGINNING")
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+
+                    behavior_stabilizer.reset()
+                    try:
+                        exam_behavior_stabilizer.reset()
+                    except Exception:
+                        pass
+
+                    active_ai_session["recognized_faces"] = []
+                    active_ai_session["unknown_faces"] = []
+                    active_ai_session["person_detections"] = []
+                    active_ai_session["object_detections"] = []
+                    active_ai_session["student_identity_cache"] = {}
+                    active_ai_session["exam_heuristic_state"] = {}
+                    active_ai_session["sleep_heuristic_state"] = {}
+                    active_ai_session["demo_face_votes"] = {}
+                    active_ai_session["demo_unknown_tracks"] = {}
+                    active_ai_session["exam_vote_history"] = {}
+
+                    ret, frame = cap.read()
+
+                    if not ret or frame is None:
+                        print("DEMO VIDEO RESTART FAILED")
+                        break
+                else:
+                    print("CAMERA FRAME ERROR")
+                    break
 
             current_time = time.time()
             timestamp = datetime.now()
@@ -1860,17 +3795,31 @@ def generate_video_stream():
             behavior_detections = []
 
             try:
-                results = behavior_yolo.track(
-                    frame,
-                    persist=True,
-                    tracker="bytetrack.yaml",
-                    conf=min(
+                # Live Exam mode needs a lower raw gate because cheating
+                # can be a subtle head/hand action. Other modes keep their
+                # existing thresholds and image size.
+                if mode == "exam" and source_type == "camera":
+                    behavior_track_conf = 0.10
+                    behavior_track_imgsz = 704
+                else:
+                    behavior_track_conf = min(
                         BEHAVIOR_RAW_CONFIDENCE,
                         PHONE_RAW_CONFIDENCE,
                         SLEEPING_RAW_CONFIDENCE,
                         CHEATING_RAW_CONFIDENCE,
-                    ),
-                    imgsz=640,
+                    )
+                    behavior_track_imgsz = (
+                        DEMO_BEHAVIOR_IMGSZ
+                        if source_type == "demo"
+                        else 640
+                    )
+
+                results = behavior_yolo.track(
+                    frame,
+                    persist=True,
+                    tracker="bytetrack.yaml",
+                    conf=behavior_track_conf,
+                    imgsz=behavior_track_imgsz,
                     iou=0.45,
                     verbose=False,
                 )
@@ -1902,7 +3851,16 @@ def generate_video_stream():
                         if canonical in {"person", "human", "student"}:
                             continue
 
-                        if confidence < minimum_raw_confidence(canonical):
+                        raw_required = minimum_raw_confidence(canonical)
+
+                        if (
+                            mode == "exam"
+                            and source_type == "camera"
+                            and canonical == "cheating"
+                        ):
+                            raw_required = 0.10
+
+                        if confidence < raw_required:
                             continue
 
                         track_id = None
@@ -1933,19 +3891,40 @@ def generate_video_stream():
 
             # 2. FACE RECOGNITION
             # --------------------------------------------------
-            if frame_counter == 1 or frame_counter % FACE_RECOGNITION_INTERVAL == 0:
+            effective_face_interval = (
+                DEMO_FACE_RECOGNITION_INTERVAL
+                if source_type == "demo"
+                else FACE_RECOGNITION_INTERVAL
+            )
+
+            face_recognition_due = (
+                frame_counter == 1
+                or frame_counter % effective_face_interval == 0
+            )
+
+            new_faces = []
+
+            if face_recognition_due:
                 new_faces = detect_and_recognize_faces(frame)
                 update_face_cache(new_faces)
+                update_unknown_face_cache(new_faces)
 
             recognized_faces = get_current_recognized_faces()
+            unknown_faces = get_current_unknown_faces()
 
             # --------------------------------------------------
             # 3. PERSON DETECTION
             # --------------------------------------------------
             # One YOLOv8n pass handles BOTH person + physical cell phone.
+            effective_object_interval = (
+                DEMO_OBJECT_DETECTION_INTERVAL
+                if source_type == "demo"
+                else OBJECT_DETECTION_INTERVAL
+            )
+
             if (
                 frame_counter == 1
-                or frame_counter % OBJECT_DETECTION_INTERVAL == 0
+                or frame_counter % effective_object_interval == 0
                 or not active_ai_session.get("person_detections")
             ):
                 persons, object_phones = detect_persons_and_phones(frame)
@@ -1967,61 +3946,169 @@ def generate_video_stream():
             # --------------------------------------------------
             # 4. FACE -> PERSON -> STUDENT
             # --------------------------------------------------
-            students = match_faces_to_persons(persons, recognized_faces)
 
-            # --------------------------------------------------
-            # 5. RAW BEHAVIOR -> STUDENT
-            # Behavior YOLO already produced student-level boxes. Do not run
-            # a second inference on individual crops.
-            # 6. RAW BEHAVIOR -> STUDENT
-            # --------------------------------------------------
-            # classroom_model.pt already contains:
-            # attentive, not_attentive, phone_use, sleeping.
-            # Use ONE behavior inference per frame for low latency.
-            raw_student_behaviors = assign_behaviors_to_students(
-                behavior_detections,
-                students,
-                frame.shape,
-            )
-
-            # Associate generic YOLOv8n cell-phone boxes to recognized students.
-            physical_phone_assignments = assign_physical_phones_to_students(
-                object_phones,
-                students,
-                frame.shape,
-            )
-
-            # Fuse custom behavior model + physical phone evidence.
-            raw_student_behaviors = fuse_final_behaviors(
-                raw_student_behaviors,
-                physical_phone_assignments,
-                students,
-            )
-
-            for phone_student_id, phone_info in physical_phone_assignments.items():
-                print(
-                    f"PHYSICAL PHONE: student={phone_student_id}, "
-                    f"conf={phone_info['confidence']:.3f}, "
-                    f"box={phone_info['box']}"
+            # DEMO ONLY:
+            # retry small/distant faces inside person crops.
+            if (
+                source_type == "demo"
+                and face_recognition_due
+                and persons
+            ):
+                recovered_demo_faces = recover_demo_faces_from_person_crops(
+                    frame,
+                    persons,
+                    new_faces,
                 )
 
-            for debug_student_id, debug_behavior in raw_student_behaviors.items():
-                if normalize_behavior(debug_behavior["label"]) == "phone_use":
+                if recovered_demo_faces:
+                    update_face_cache(recovered_demo_faces)
+
+                recognized_faces = get_current_recognized_faces()
+
+            students = update_persistent_students(
+                persons,
+                recognized_faces,
+                current_time,
+            )
+
+            if source_type == "demo":
+                # Build UNKNOWN from unmatched PERSON tracks instead of relying
+                # only on an Unknown MTCNN face. This ensures every visible
+                # student gets a frame after a short confirmation period.
+                unknown_people = get_demo_unidentified_people(
+                    persons,
+                    students,
+                    current_time,
+                )
+            else:
+                # Preserve original live UNKNOWN behavior.
+                unknown_people = match_unknown_faces_to_persons(
+                    persons,
+                    unknown_faces,
+                    students,
+                )
+
+            for tracked_student in students:
+                if tracked_student.get("identity_source") == "body_track":
                     print(
-                        f"PHONE ASSIGNED: student={debug_student_id}, "
-                        f"conf={debug_behavior['confidence']:.3f}, "
-                        f"source={debug_behavior.get('source', 'unknown')}, "
-                        f"box={debug_behavior['box']}"
+                        f"IDENTITY HELD: student={tracked_student['student_id']} "
+                        f"(face hidden, body detected)"
                     )
 
             # --------------------------------------------------
-            # 6. TEMPORAL STABILIZATION
+            # 5. PRESET-SPECIFIC BEHAVIOR PIPELINE
             # --------------------------------------------------
-            student_behaviors = stabilize_student_behaviors(
-                raw_student_behaviors,
-                students,
-                current_time,
-            )
+            if mode == "exam":
+                # Exam Protector Preset:
+                # exam_model.pt only -> cheating / non_cheating.
+                #
+                # Run a student-specific crop pass so small cheating actions
+                # are easier to see and cannot be assigned to the neighbor.
+                exam_crop_due = (
+                    frame_counter == 1
+                    or (
+                        source_type == "camera"
+                        and frame_counter % 2 == 0
+                    )
+                    or (
+                        source_type == "demo"
+                        and frame_counter % 4 == 0
+                    )
+                )
+
+                if students and exam_crop_due:
+                    crop_conf = (
+                        EXAM_CROP_CONFIDENCE_LIVE
+                        if source_type == "camera"
+                        else EXAM_CROP_CONFIDENCE_DEMO
+                    )
+
+                    exam_crop_detections = detect_exam_student_crop_behaviors(
+                        frame,
+                        behavior_yolo,
+                        students,
+                        crop_conf,
+                    )
+
+                    if exam_crop_detections:
+                        behavior_detections.extend(exam_crop_detections)
+
+                        if source_type == "camera":
+                            for item in exam_crop_detections:
+                                print(
+                                    "LIVE EXAM CROP:",
+                                    f"student={item.get('student_hint')}",
+                                    f"label={item.get('label')}",
+                                    f"conf={float(item.get('confidence', 0.0)):.3f}",
+                                )
+
+                raw_student_behaviors = assign_exam_behaviors_to_students(
+                    behavior_detections,
+                    students,
+                )
+
+                # LIVE CAMERA ONLY:
+                # Keep exam_model.pt as the primary detector, but supplement
+                # it with repeated lateral head-turn evidence when the model
+                # misses an obvious suspicious turn.
+                #
+                # Demo mode is NOT changed by this fallback.
+                if source_type == "camera":
+                    raw_student_behaviors = fuse_exam_model_and_head_movement(
+                        raw_student_behaviors,
+                        students,
+                        current_time,
+                    )
+
+                student_behaviors = stabilize_exam_model_votes(
+                    raw_student_behaviors,
+                    students,
+                    current_time,
+                )
+
+            else:
+                # Smart Classroom Preset:
+                # classroom_model.pt -> attentive / not_attentive /
+                # phone_use / sleeping
+                raw_student_behaviors = assign_behaviors_to_students(
+                    behavior_detections,
+                    students,
+                    frame.shape,
+                )
+
+                physical_phone_assignments = assign_physical_phones_to_students(
+                    object_phones,
+                    students,
+                    frame.shape,
+                )
+
+                raw_student_behaviors = fuse_final_behaviors(
+                    raw_student_behaviors,
+                    physical_phone_assignments,
+                    students,
+                )
+
+                # Add a classroom sleeping fallback for the common case where
+                # the student lays the head down and the face disappears.
+                raw_student_behaviors = fuse_classroom_sleeping(
+                    raw_student_behaviors,
+                    students,
+                    physical_phone_assignments,
+                    current_time,
+                )
+
+                for phone_student_id, phone_info in physical_phone_assignments.items():
+                    print(
+                        f"PHYSICAL PHONE: student={phone_student_id}, "
+                        f"conf={phone_info['confidence']:.3f}, "
+                        f"box={phone_info['box']}"
+                    )
+
+                student_behaviors = stabilize_student_behaviors(
+                    raw_student_behaviors,
+                    students,
+                    current_time,
+                )
 
             # --------------------------------------------------
             # 7. STATISTICS + DISPLAY + EVIDENCE
@@ -2033,6 +4120,8 @@ def generate_video_stream():
                     current_time,
                     timestamp,
                 )
+
+            draw_unknown_person_boxes(frame, unknown_people)
 
             student_lookup = {
                 student["student_id"]: student for student in students
@@ -2064,7 +4153,11 @@ def generate_video_stream():
             # --------------------------------------------------
             # 8. ENCODE STREAM FRAME
             # --------------------------------------------------
-            ret, buffer = cv2.imencode(".jpg", frame)
+            ret, buffer = cv2.imencode(
+                ".jpg",
+                frame,
+                [int(cv2.IMWRITE_JPEG_QUALITY), 80],
+            )
             if not ret:
                 continue
 
@@ -2074,6 +4167,27 @@ def generate_video_stream():
                 + buffer.tobytes()
                 + b"\r\n"
             )
+
+            # DEMO REAL-TIME PLAYBACK:
+            # If AI inference is faster than the source FPS, sleep normally.
+            # If inference is slower, drop a few undecoded source frames so the
+            # prerecorded video stays close to real-time instead of slow motion.
+            if frame_interval > 0:
+                elapsed = time.time() - loop_started
+                remaining = frame_interval - elapsed
+
+                if remaining > 0:
+                    time.sleep(remaining)
+                else:
+                    frames_behind = int(elapsed / frame_interval) - 1
+                    frames_to_drop = max(
+                        0,
+                        min(DEMO_MAX_CATCHUP_FRAMES, frames_behind),
+                    )
+
+                    for _ in range(frames_to_drop):
+                        if not cap.grab():
+                            break
 
     except Exception as e:
         print("VIDEO STREAM ERROR:", repr(e))
@@ -2113,6 +4227,19 @@ async def video_feed():
 
 @router.post("/start-camera")
 async def start_camera(data: dict):
+    """
+    Start a Student360 AI session.
+
+    JSON:
+      {
+        "mode": "classroom" | "exam",
+        "source_type": "camera" | "demo"
+      }
+
+    Demo files:
+      backend/demo_videos/classroom_demo.mp4
+      backend/demo_videos/exam_demo.mp4
+    """
     global active_ai_session
 
     with camera_lock:
@@ -2122,60 +4249,135 @@ async def start_camera(data: dict):
                 detail="An AI session is already running",
             )
 
-        mode = data.get("mode", "classroom")
+        mode = str(data.get("mode", "classroom")).strip().lower()
+        source_type = str(
+            data.get("source_type", "camera")
+        ).strip().lower()
+
         if mode not in {"classroom", "exam"}:
             raise HTTPException(
                 status_code=400,
                 detail="Invalid monitoring mode",
             )
 
-        print("INITIALIZING STUDENT360 CAMERA...")
-        cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
-        # Keep webcam latency low by asking the driver for the smallest
-        # practical capture buffer. Some Windows camera drivers ignore this,
-        # so it is a best-effort setting.
-        try:
-            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        except Exception:
-            pass
-        if not cap.isOpened():
-            cap.release()
-            cap = cv2.VideoCapture(0)
+        if source_type not in {"camera", "demo"}:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid input source",
+            )
+
+        source_path = None
+
+        if source_type == "camera":
+            print("INITIALIZING STUDENT360 LIVE CAMERA...")
+
+            cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+
             try:
                 cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             except Exception:
                 pass
 
-        if not cap.isOpened():
-            cap.release()
-            raise HTTPException(
-                status_code=500,
-                detail="Unable to open webcam",
+            if not cap.isOpened():
+                cap.release()
+                cap = cv2.VideoCapture(0)
+
+                try:
+                    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                except Exception:
+                    pass
+
+            if not cap.isOpened():
+                cap.release()
+                raise HTTPException(
+                    status_code=500,
+                    detail="Unable to open webcam",
+                )
+
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+
+        else:
+            demo_filename = (
+                "classroom_demo.mp4"
+                if mode == "classroom"
+                else "exam_demo.mp4"
             )
 
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+            source_path = os.path.abspath(
+                os.path.join(
+                    DEMO_VIDEOS_DIR,
+                    demo_filename,
+                )
+            )
+
+            if not os.path.exists(source_path):
+                raise HTTPException(
+                    status_code=404,
+                    detail=(
+                        f"Demo video not found: {demo_filename}. "
+                        f"Place it inside {DEMO_VIDEOS_DIR}"
+                    ),
+                )
+
+            print(
+                "INITIALIZING STUDENT360 DEMO VIDEO:",
+                source_path,
+            )
+
+            cap = cv2.VideoCapture(source_path)
+
+            if not cap.isOpened():
+                cap.release()
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Unable to open demo video: {demo_filename}",
+                )
 
         ret, test_frame = cap.read()
+
         if not ret or test_frame is None:
             cap.release()
             raise HTTPException(
                 status_code=500,
-                detail="Camera opened but failed to capture frame",
+                detail=(
+                    "Input source opened but failed to read the first frame"
+                ),
             )
+
+        # Reset demo file back to frame 0 because we consumed one frame for validation.
+        if source_type == "demo":
+            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+
+        source_fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+
+        if source_type == "demo" and (
+            source_fps <= 0.0
+            or source_fps > 120.0
+        ):
+            source_fps = 30.0
 
         session_id = str(uuid.uuid4())
         started_at = datetime.now()
 
         behavior_stabilizer.reset()
 
+        try:
+            exam_behavior_stabilizer.reset()
+        except Exception:
+            pass
+
         active_ai_session.update({
             "cap": cap,
             "is_running": True,
             "mode": mode,
+            "source_type": source_type,
+            "source_path": source_path,
+            "source_fps": source_fps,
             "student_stats": {},
             "tracker_to_student_map": {},
             "recognized_faces": [],
+            "unknown_faces": [],
             "person_detections": [],
             "session_id": session_id,
             "started_at": started_at,
@@ -2183,25 +4385,44 @@ async def start_camera(data: dict):
             "behavior_states": {},
             "object_detections": [],
             "last_object_detection_time": 0.0,
+            "student_identity_cache": {},
+            "exam_heuristic_state": {},
+            "sleep_heuristic_state": {},
+            "demo_face_votes": {},
+            "demo_unknown_tracks": {},
+            "exam_vote_history": {},
         })
 
         print("================================")
         print("AI SESSION STARTED")
         print("SESSION ID:", session_id)
         print("MODE:", mode)
-        print("CAMERA INITIALIZED")
-        print("MAIN BOX: PERSON")
-        print("FACE RECOGNITION: FULL FRAME")
-        print("BEHAVIOR: YOLO + BYTETRACK + STUDENT-LEVEL ASSOCIATION + CONSERVATIVE TEMPORAL VOTING")
-        print("BEHAVIOR RAW CONFIDENCE:", BEHAVIOR_RAW_CONFIDENCE)
-        print("PHONE RAW CONFIDENCE:", PHONE_RAW_CONFIDENCE)
+        print("SOURCE TYPE:", source_type)
+
+        if source_type == "camera":
+            print("INPUT: LIVE CAMERA")
+        else:
+            print("INPUT: PRE-RECORDED AI DEMO")
+            print("DEMO FILE:", source_path)
+            print("DEMO FPS:", source_fps)
+
         print("================================")
 
         return {
             "status": "success",
             "session_id": session_id,
             "mode": mode,
-            "message": "Camera initialized successfully",
+            "source_type": source_type,
+            "source_path": (
+                os.path.basename(source_path)
+                if source_path
+                else None
+            ),
+            "message": (
+                "Live AI camera initialized successfully"
+                if source_type == "camera"
+                else "AI demo video initialized successfully"
+            ),
         }
 
 
@@ -2352,11 +4573,15 @@ async def stop_camera():
         print("SESSION DATABASE ERROR:", repr(e))
 
     behavior_stabilizer.reset()
+    exam_behavior_stabilizer.reset()
 
     active_ai_session.update({
         "cap": None,
         "is_running": False,
         "mode": None,
+        "source_type": "camera",
+        "source_path": None,
+        "source_fps": 0.0,
         "student_stats": {},
         "tracker_to_student_map": {},
         "recognized_faces": [],
@@ -2367,6 +4592,9 @@ async def stop_camera():
         "behavior_states": {},
         "object_detections": [],
         "last_object_detection_time": 0.0,
+        "student_identity_cache": {},
+        "exam_heuristic_state": {},
+        "sleep_heuristic_state": {},
     })
 
     print("================================")
@@ -2437,10 +4665,16 @@ def reload_face_models():
 
         face_svm = joblib.load(face_model_path)
         label_encoder = joblib.load(encoder_path)
+        load_demo_training_embeddings()
 
         active_ai_session["tracker_to_student_map"] = {}
         active_ai_session["recognized_faces"] = []
+        active_ai_session["unknown_faces"] = []
+        active_ai_session["student_identity_cache"] = {}
+        active_ai_session["exam_heuristic_state"] = {}
+        active_ai_session["sleep_heuristic_state"] = {}
         behavior_stabilizer.reset()
+        exam_behavior_stabilizer.reset()
 
         try:
             students = [str(x) for x in label_encoder.classes_]
