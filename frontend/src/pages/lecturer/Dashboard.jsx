@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import Navbar from "../../components/Navbar";
 
 import {
   getStudents,
@@ -28,17 +29,18 @@ import {
 
 const CHART_COLORS = {
   attendance: "#3b82f6",
-  behavior: "#22c55e",
-  attentive: "#22c55e",
-  cheating: "#ef4444",
+  behavior: "#10b981",
+  attentive: "#10b981",
+  cheating: "#f43f5e",
   phone: "#f59e0b",
   sleeping: "#8b5cf6",
-  good: "#22c55e",
+  good: "#10b981",
   warning: "#f59e0b",
-  risk: "#ef4444",
+  risk: "#f43f5e",
 };
 
 export default function LecturerDashboard() {
+  const navigate = useNavigate();
 
   // Appeals States
   const [appealsList, setAppealsList] = useState([]);
@@ -58,8 +60,6 @@ export default function LecturerDashboard() {
     };
     fetchAppeals();
   }, []);
-
-  const navigate = useNavigate();
 
   const classroom = useMemo(() => {
     try {
@@ -93,24 +93,16 @@ export default function LecturerDashboard() {
   const [loading, setLoading] = useState(true);
   const [notifying, setNotifying] = useState(false);
   const [error, setError] = useState("");
+  const [emailToast, setEmailToast] = useState(null);
 
   useEffect(() => {
     loadDashboard();
   }, []);
 
   const getArrayData = (response) => {
-    if (Array.isArray(response)) {
-      return response;
-    }
-
-    if (Array.isArray(response?.data)) {
-      return response.data;
-    }
-
-    if (Array.isArray(response?.data?.data)) {
-      return response.data.data;
-    }
-
+    if (Array.isArray(response)) return response;
+    if (Array.isArray(response?.data)) return response.data;
+    if (Array.isArray(response?.data?.data)) return response.data.data;
     return [];
   };
 
@@ -150,9 +142,9 @@ export default function LecturerDashboard() {
       setAttendance(attendanceData);
       setBehavior(behaviorData);
 
-      // --- FILTER STUDENTS BASED ON SELECTED CLASSROOM ---
+      // Filter students based on classroom
       const studentData = rawStudentData.filter((student) => {
-        if (!classroom.year && !classroom.group) return true; // Classroom Select කරලා නැත්නම් ඔක්කොම පෙන්නන්න
+        if (!classroom.year && !classroom.group) return true;
 
         const sYear = String(student.academic_year || student.year || "").replace("Year ", "").trim();
         const sSem = String(student.semester || student.sem || "").replace("Semester ", "").trim();
@@ -179,7 +171,6 @@ export default function LecturerDashboard() {
         );
 
         let attendanceRate = 0;
-
         if (totalSessions > 0) {
           attendanceRate = Math.min(
             Math.round((attendanceRecords.length / totalSessions) * 100),
@@ -202,23 +193,16 @@ export default function LecturerDashboard() {
         });
 
         const totalBehaviorTime =
-          attentiveTime +
-          cheatingTime +
-          sleepingTime +
-          phoneTime +
-          notAttentiveTime;
+          attentiveTime + cheatingTime + sleepingTime + phoneTime + notAttentiveTime;
 
         const behaviorScore =
           totalBehaviorTime === 0
             ? 0
             : Math.round((attentiveTime / totalBehaviorTime) * 100);
 
-        const overall = Math.round(
-          attendanceRate * 0.4 + behaviorScore * 0.6
-        );
+        const overall = Math.round(attendanceRate * 0.4 + behaviorScore * 0.6);
 
         let status = "risk";
-
         if (overall >= 75) {
           status = "good";
         } else if (overall >= 60) {
@@ -233,24 +217,20 @@ export default function LecturerDashboard() {
           behavior: behaviorScore,
           overall,
           status,
-          email:
-            student.email ||
-            `${String(studentId).toLowerCase()}@gmail.com`,
+          email: student.email || `${String(studentId).toLowerCase()}@gmail.com`,
           attendanceRecords: attendanceRecords.length,
           behaviorRecords: behaviorRecords.length,
         };
       });
 
       calculatedStudents.sort((a, b) => b.overall - a.overall);
-
       setStudents(calculatedStudents);
     } catch (err) {
       console.error("Dashboard loading error:", err);
-
       setError(
         err?.response?.data?.detail ||
-          err?.message ||
-          "Unable to load lecturer dashboard data."
+        err?.message ||
+        "Unable to load lecturer dashboard data."
       );
     } finally {
       setLoading(false);
@@ -261,43 +241,32 @@ export default function LecturerDashboard() {
     students.length === 0
       ? 0
       : Math.round(
-          students.reduce((total, student) => total + student.attendance, 0) /
-            students.length
-        );
+        students.reduce((total, student) => total + student.attendance, 0) /
+        students.length
+      );
 
   const averageBehavior =
     students.length === 0
       ? 0
       : Math.round(
-          students.reduce((total, student) => total + student.behavior, 0) /
-            students.length
-        );
+        students.reduce((total, student) => total + student.behavior, 0) /
+        students.length
+      );
 
   const averageOverall =
     students.length === 0
       ? 0
       : Math.round(
-          students.reduce((total, student) => total + student.overall, 0) /
-            students.length
-        );
+        students.reduce((total, student) => total + student.overall, 0) /
+        students.length
+      );
 
-  const riskyStudents = students.filter(
-    (student) => student.status === "risk"
-  );
-
-  const warningStudents = students.filter(
-    (student) => student.status === "warning"
-  );
-
-  const goodStudents = students.filter(
-    (student) => student.status === "good"
-  );
+  const riskyStudents = students.filter((student) => student.status === "risk");
+  const warningStudents = students.filter((student) => student.status === "warning");
+  const goodStudents = students.filter((student) => student.status === "good");
 
   const performanceData = students.slice(0, 10).map((student) => ({
-    name:
-      student.name.length > 12
-        ? `${student.name.substring(0, 12)}...`
-        : student.name,
+    name: student.name.length > 12 ? `${student.name.substring(0, 12)}...` : student.name,
     Attendance: student.attendance,
     Behaviour: student.behavior,
   }));
@@ -316,72 +285,40 @@ export default function LecturerDashboard() {
     notAttentive += Number(item.not_attentive || 0);
   });
 
-  const totalBehaviourTime =
-    attentive + cheating + sleeping + phone + notAttentive;
+  const totalBehaviourTime = attentive + cheating + sleeping + phone + notAttentive;
 
   const calculatePercentage = (value) => {
-    if (totalBehaviourTime === 0) {
-      return 0;
-    }
-
+    if (totalBehaviourTime === 0) return 0;
     return Number(((value / totalBehaviourTime) * 100).toFixed(1));
   };
 
   const behaviourData = [
-    {
-      name: "Attentive",
-      value: calculatePercentage(attentive),
-    },
-    {
-      name: "Cheating",
-      value: calculatePercentage(cheating),
-    },
-    {
-      name: "Phone Use",
-      value: calculatePercentage(phone),
-    },
-    {
-      name: "Sleeping",
-      value: calculatePercentage(sleeping),
-    },
-    {
-      name: "Not Attentive",
-      value: calculatePercentage(notAttentive),
-    },
+    { name: "Attentive", value: calculatePercentage(attentive) },
+    { name: "Cheating", value: calculatePercentage(cheating) },
+    { name: "Phone Use", value: calculatePercentage(phone) },
+    { name: "Sleeping", value: calculatePercentage(sleeping) },
+    { name: "Not Attentive", value: calculatePercentage(notAttentive) },
   ].filter((item) => item.value > 0);
 
   const riskData = [
-    {
-      name: "Good",
-      value: goodStudents.length,
-    },
-    {
-      name: "Warning",
-      value: warningStudents.length,
-    },
-    {
-      name: "Risk",
-      value: riskyStudents.length,
-    },
+    { name: "Good", value: goodStudents.length },
+    { name: "Warning", value: warningStudents.length },
+    { name: "Risk", value: riskyStudents.length },
   ];
 
   const filteredStudents = students.filter((student) => {
     const query = search.trim().toLowerCase();
-
     const matchesSearch =
       student.id.toLowerCase().includes(query) ||
       student.name.toLowerCase().includes(query) ||
       student.intake.toLowerCase().includes(query);
 
-    const matchesStatus =
-      statusFilter === "all" || student.status === statusFilter;
-
+    const matchesStatus = statusFilter === "all" || student.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
   const escapeCSV = (value) => {
     const stringValue = String(value ?? "");
-
     return `"${stringValue.replace(/"/g, '""')}"`;
   };
 
@@ -418,20 +355,15 @@ export default function LecturerDashboard() {
       ...rows.map((row) => row.map(escapeCSV).join(",")),
     ].join("\n");
 
-    const blob = new Blob([csvContent], {
-      type: "text/csv;charset=utf-8;",
-    });
-
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement("a");
 
     link.href = url;
     link.download = `Student360_${classroom.subject || "Class"}_Report.csv`;
-
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-
     window.URL.revokeObjectURL(url);
   };
 
@@ -441,10 +373,7 @@ export default function LecturerDashboard() {
       return;
     }
 
-    const emails = riskyStudents
-      .map((student) => student.email)
-      .filter(Boolean);
-
+    const emails = riskyStudents.map((student) => student.email).filter(Boolean);
     if (emails.length === 0) {
       alert("Risk students do not have valid email addresses.");
       return;
@@ -454,17 +383,9 @@ export default function LecturerDashboard() {
       .map(
         (student) => `
           <tr>
-            <td style="padding:10px;border-bottom:1px solid #e5e7eb;">
-              ${student.name}
-            </td>
-
-            <td style="padding:10px;border-bottom:1px solid #e5e7eb;">
-              ${student.id}
-            </td>
-
-            <td style="padding:10px;border-bottom:1px solid #e5e7eb;color:#ef4444;font-weight:bold;">
-              ${student.overall}%
-            </td>
+            <td style="padding:10px;border-bottom:1px solid #e5e7eb;">${student.name}</td>
+            <td style="padding:10px;border-bottom:1px solid #e5e7eb;">${student.id}</td>
+            <td style="padding:10px;border-bottom:1px solid #e5e7eb;color:#ef4444;font-weight:bold;">${student.overall}%</td>
           </tr>
         `
       )
@@ -473,123 +394,36 @@ export default function LecturerDashboard() {
     const htmlBody = `
       <!DOCTYPE html>
       <html>
-        <head>
-          <meta charset="UTF-8" />
-        </head>
+        <head><meta charset="UTF-8" /></head>
         <body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,sans-serif;">
           <table width="100%" cellpadding="0" cellspacing="0">
             <tr>
               <td align="center" style="padding:30px 10px;">
-                <table
-                  width="650"
-                  cellpadding="0"
-                  cellspacing="0"
-                  style="max-width:650px;background:white;border-radius:12px;overflow:hidden;box-shadow:0 0 15px rgba(0,0,0,.1);"
-                >
+                <table width="650" cellpadding="0" cellspacing="0" style="max-width:650px;background:white;border-radius:12px;overflow:hidden;box-shadow:0 0 15px rgba(0,0,0,.1);">
                   <tr>
                     <td style="background:#0f172a;padding:25px;color:white;text-align:center;">
-                      <h1 style="margin:0;">
-                        🎓 Student360 AI
-                      </h1>
-                      <p style="margin-top:8px;">
-                        AI Classroom Analytics System
-                      </p>
+                      <h1 style="margin:0;">🎓 Student360 AI</h1>
+                      <p style="margin-top:8px;">AI Classroom Analytics System</p>
                     </td>
                   </tr>
                   <tr>
                     <td style="padding:35px;">
-                      <h2 style="color:#ef4444;">
-                        Academic Performance Alert
-                      </h2>
-                      <p>
-                        Dear Student,
-                      </p>
-                      <p>
-                        The Student360 AI Classroom Monitoring System has identified
-                        that your classroom performance requires attention.
-                      </p>
-                      <table
-                        width="100%"
-                        style="border-collapse:collapse;margin-top:20px;"
-                      >
-                        <tr>
-                          <th
-                            align="left"
-                            style="padding:12px;background:#e5e7eb;"
-                          >
-                            Areas to Improve
-                          </th>
-                        </tr>
-                        <tr>
-                          <td style="padding:12px;">
-                            ✅ Attend lectures regularly
-                          </td>
-                        </tr>
-                        <tr>
-                          <td style="padding:12px;">
-                            ✅ Improve classroom attention
-                          </td>
-                        </tr>
-                        <tr>
-                          <td style="padding:12px;">
-                            ✅ Avoid unnecessary phone usage
-                          </td>
-                        </tr>
-                        <tr>
-                          <td style="padding:12px;">
-                            ✅ Participate actively during lectures
-                          </td>
-                        </tr>
-                      </table>
-                      <div
-                        style="
-                          margin-top:25px;
-                          background:#fef3c7;
-                          padding:18px;
-                          border-left:6px solid #f59e0b;
-                        "
-                      >
-                        <strong>
-                          AI Recommendation
-                        </strong>
-                        <p>
-                          Attend lectures regularly, stay attentive, avoid phone
-                          usage and actively participate in classroom activities.
-                        </p>
+                      <h2 style="color:#ef4444;">Academic Performance Alert</h2>
+                      <p>Dear Student,</p>
+                      <p>The Student360 AI Classroom Monitoring System has identified that your classroom performance requires attention.</p>
+                      <div style="margin-top:25px;background:#fef3c7;padding:18px;border-left:6px solid #f59e0b;">
+                        <strong>AI Recommendation</strong>
+                        <p>Attend lectures regularly, stay attentive, avoid phone usage and actively participate in classroom activities.</p>
                       </div>
-                      <h3 style="margin-top:25px;">
-                        Students Requiring Attention
-                      </h3>
-                      <table
-                        width="100%"
-                        style="border-collapse:collapse;margin-top:10px;"
-                      >
+                      <h3 style="margin-top:25px;">Students Requiring Attention</h3>
+                      <table width="100%" style="border-collapse:collapse;margin-top:10px;">
                         <tr style="background:#f3f4f6;">
-                          <th align="left" style="padding:10px;">
-                            Name
-                          </th>
-                          <th align="left" style="padding:10px;">
-                            Student ID
-                          </th>
-                          <th align="left" style="padding:10px;">
-                            Overall
-                          </th>
+                          <th align="left" style="padding:10px;">Name</th>
+                          <th align="left" style="padding:10px;">Student ID</th>
+                          <th align="left" style="padding:10px;">Overall</th>
                         </tr>
                         ${studentList}
                       </table>
-                      <p style="margin-top:25px;">
-                        This notification was automatically generated by
-                        <b> Student360 AI Analytics</b>.
-                      </p>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="background:#0f172a;color:white;padding:18px;text-align:center;">
-                      Student360 AI
-                      <br />
-                      Faculty of Computing
-                      <br />
-                      AI-Based Classroom Monitoring System
                     </td>
                   </tr>
                 </table>
@@ -602,112 +436,76 @@ export default function LecturerDashboard() {
 
     try {
       setNotifying(true);
-
       const response = await sendEmail({
         emails,
         subject: "Student360 AI - Academic Performance Alert",
         body: htmlBody,
       });
 
-      alert(
+      const successCount =
+        response?.success_count ?? response?.data?.success_count ?? 0;
+      const failedCount =
+        response?.failed_count ?? response?.data?.failed_count ?? 0;
+      const toastMsg =
         response?.message ||
-          response?.data?.message ||
-          "Notifications sent successfully."
-      );
+        `Emails sent successfully to ${successCount} student(s). ${failedCount} invalid/failed emails were skipped.`;
+
+      setEmailToast(toastMsg);
+      alert(toastMsg);
     } catch (err) {
       console.error("Email sending error:", err);
-
-      alert(
+      const errMsg =
         err?.response?.data?.detail ||
-          "Email sending failed. Please check the backend."
-      );
+        err?.message ||
+        "Email sending failed. Please check the backend.";
+      setEmailToast(errMsg);
+      alert(errMsg);
     } finally {
       setNotifying(false);
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    localStorage.removeItem("classroom");
-    localStorage.removeItem("selectedRole");
-
-    navigate("/roles");
-  };
-
   function getStatusText(status) {
-    if (status === "good") {
-      return "Good";
-    }
-
-    if (status === "warning") {
-      return "Warning";
-    }
-
+    if (status === "good") return "Good";
+    if (status === "warning") return "Warning";
     return "Risk";
   }
 
   function getStatusClass(status) {
-    if (status === "good") {
-      return "bg-green-500/15 text-green-400 border-green-500/30";
-    }
-
-    if (status === "warning") {
-      return "bg-yellow-500/15 text-yellow-400 border-yellow-500/30";
-    }
-
-    return "bg-red-500/15 text-red-400 border-red-500/30";
+    if (status === "good") return "bg-emerald-950/60 text-emerald-400 border-emerald-500/30";
+    if (status === "warning") return "bg-amber-950/60 text-amber-400 border-amber-500/30";
+    return "bg-rose-950/60 text-rose-400 border-rose-500/30";
   }
 
   function getScoreClass(score) {
-    if (score >= 75) {
-      return "text-green-400";
-    }
-
-    if (score >= 60) {
-      return "text-yellow-400";
-    }
-
-    return "text-red-400";
+    if (score >= 75) return "text-emerald-400";
+    if (score >= 60) return "text-amber-400";
+    return "text-rose-400";
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#071828] flex flex-col items-center justify-center text-white">
-        <div className="w-12 h-12 border-4 border-gray-700 border-t-blue-500 rounded-full animate-spin" />
-
-        <h2 className="text-xl font-semibold mt-5">
-          Loading Lecturer Dashboard
+      <div className="min-h-screen bg-[#030c18] flex flex-col items-center justify-center text-white">
+        <div className="w-12 h-12 border-4 border-slate-700 border-t-blue-500 rounded-full animate-spin" />
+        <h2 className="text-base font-semibold mt-4 text-slate-300">
+          Syncing Faculty Classroom Analytics...
         </h2>
-
-        <p className="text-gray-400 mt-2">
-          Fetching student analytics...
-        </p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-[#071828] flex items-center justify-center text-white p-6">
-        <div className="max-w-md w-full bg-[#0b2236] border border-red-500/30 rounded-2xl p-8 text-center">
-          <div className="text-5xl mb-4">
-            ⚠️
-          </div>
-
-          <h2 className="text-2xl font-bold">
-            Dashboard Loading Failed
-          </h2>
-
-          <p className="text-gray-400 mt-3">
-            {error}
-          </p>
-
+      <div className="min-h-screen bg-[#030c18] flex items-center justify-center text-white p-6">
+        <div className="max-w-md w-full bg-[#081526] border border-rose-500/30 rounded-2xl p-8 text-center shadow-2xl">
+          <div className="text-4xl mb-3">⚠️</div>
+          <h2 className="text-lg font-bold">Dashboard Loading Failed</h2>
+          <p className="text-slate-400 text-sm mt-2">{error}</p>
           <button
             onClick={loadDashboard}
-            className="mt-6 bg-blue-600 hover:bg-blue-700 px-6 py-3 rounded-lg font-semibold transition"
+            className="mt-6 bg-blue-600 hover:bg-blue-700 px-6 py-2.5 rounded-xl font-semibold text-sm transition"
           >
-            Try Again
+            Retry
           </button>
         </div>
       </div>
@@ -715,176 +513,129 @@ export default function LecturerDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-[#071828] text-white">
+    <div className="min-h-screen bg-[#030c18] text-slate-100 selection:bg-blue-600 selection:text-white pb-16">
+      <Navbar />
 
-      {/* Header */}
-      <header className="bg-[#091d30] border-b border-white/10 sticky top-0 z-30">
-        <div className="max-w-[1600px] mx-auto px-4 md:px-8 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <main className="max-w-[1600px] mx-auto px-4 md:px-8 pt-7 space-y-7">
 
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center text-2xl shadow-lg">
-              👨‍🏫
-            </div>
+        {/* Classroom & Control Header Banner */}
+        <section className="bg-[#081526] border border-slate-800 rounded-2xl p-6 sm:p-7 shadow-xl relative overflow-hidden">
+          <div className="absolute top-0 right-10 w-96 h-36 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
 
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
             <div>
-              <h1 className="text-2xl md:text-3xl font-bold">
-                Lecturer Dashboard
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 mb-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                <span className="text-xs font-bold uppercase tracking-wider text-blue-400">
+                  Lecturer Intelligence Console
+                </span>
+              </div>
+
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white flex items-center gap-3">
+                <span>Subject:</span>
+                <span className="bg-gradient-to-r from-blue-400 via-sky-300 to-teal-300 bg-clip-text text-transparent">
+                  {classroom.subject || "All Assigned Classrooms"}
+                </span>
               </h1>
 
-              <p className="text-gray-400 text-sm mt-1">
-                Student360 AI Classroom Analytics
-              </p>
-            </div>
-          </div>
+              {/* Badges + Change Classroom button in one line */}
+              <div className="mt-3 flex flex-wrap items-center gap-2.5 text-xs">
+                <ClassroomBadge label="Year" value={classroom.year ? `Year ${classroom.year}` : "N/A"} />
+                <ClassroomBadge label="Semester" value={classroom.sem ? `Semester ${classroom.sem}` : "N/A"} />
+                <ClassroomBadge label="Group" value={classroom.group ? `Group ${classroom.group}` : "N/A"} />
 
-          <div className="flex flex-wrap items-center gap-3">
-
-            {/* DEDICATED LIVE MONITORING LAUNCH BUTTON */}
-            <button
-              onClick={() => window.open("/lecturer/monitoring", "_blank")}
-              className="px-5 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white shadow-lg shadow-blue-500/25 border border-blue-400/30 flex items-center gap-2.5 transition-all transform hover:scale-[1.03]"
-            >
-              <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
-              🚀 Launch AI Monitoring Console
-            </button>
-
-            {/* CHANGE CLASSROOM BUTTON */}
-            <button
-              onClick={() => navigate("/lecturer/classroom")}
-              className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-sm font-semibold transition"
-            >
-              Change Classroom
-            </button>
-
-            {/* APPEALS BUTTON */}
-            <button
-              onClick={() => navigate("/lecturer/appeals")}
-              className="px-4 py-2 rounded-xl bg-blue-600/20 text-blue-300 hover:bg-blue-600/30 border border-blue-500/30 text-sm font-semibold transition"
-            >
-              View Appeals
-            </button>
-
-            {/* LOGOUT BUTTON */}
-            <button
-              onClick={logout}
-              className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-sm font-semibold transition shadow-md"
-            >
-              Sign Out
-            </button>
-
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-[1600px] mx-auto p-4 md:p-8">
-
-        {/* Classroom Information */}
-        <section className="bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-blue-500/20 rounded-2xl p-5 mb-7">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-
-            <div>
-              <p className="text-sm text-blue-300 font-medium">
-                CURRENT CLASSROOM
-              </p>
-
-              <h2 className="text-xl md:text-2xl font-bold mt-1">
-                {classroom.subject || "Subject Not Selected"}
-              </h2>
+                <button
+                  onClick={() => navigate("/lecturer/classroom")}
+                  className="px-3 py-1 rounded-lg bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-blue-400 hover:text-blue-300 text-xs font-semibold transition flex items-center gap-1.5 ml-1"
+                >
+                  <span>✏️</span> Change Classroom
+                </button>
+              </div>
             </div>
 
-            <div className="flex flex-wrap gap-3 text-sm">
-              <ClassroomBadge
-                label="Year"
-                value={classroom.year ? `Year ${classroom.year}` : "N/A"}
-              />
+            {/* Right Action Buttons */}
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={() => window.open("/lecturer/monitoring", "_blank")}
+                className="px-5 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white shadow-lg shadow-blue-500/25 border border-blue-400/30 flex items-center gap-2 transition-all transform hover:scale-[1.02]"
+              >
+                <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
+                Launch Live AI Console
+              </button>
 
-              <ClassroomBadge
-                label="Semester"
-                value={classroom.sem ? `Semester ${classroom.sem}` : "N/A"}
-              />
-
-              <ClassroomBadge
-                label="Group"
-                value={classroom.group ? `Group ${classroom.group}` : "N/A"}
-              />
+              <button
+                onClick={exportCSV}
+                className="px-4 py-2.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-500/30 text-xs font-bold transition"
+              >
+                Export CSV
+              </button>
             </div>
           </div>
         </section>
 
         {/* Summary Cards */}
-        <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 mb-7">
+        <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           <SummaryCard
             title="Total Students"
             value={students.length}
-            subtitle="Registered in this class"
+            subtitle="Registered in cohort"
             icon="👥"
           />
-
           <SummaryCard
-            title="Average Attendance"
+            title="Avg Attendance"
             value={`${averageAttendance}%`}
-            subtitle={`${attendance.length} attendance records`}
+            subtitle={`${attendance.length} total presences`}
             icon="📅"
             valueClass={getScoreClass(averageAttendance)}
           />
-
           <SummaryCard
-            title="Average Behavior"
+            title="Avg Behaviour"
             value={`${averageBehavior}%`}
-            subtitle={`${behavior.length} behavior logs`}
+            subtitle={`${behavior.length} behavior vectors logged`}
             icon="🧠"
             valueClass={getScoreClass(averageBehavior)}
           />
-
           <SummaryCard
-            title="Risk Students"
+            title="At-Risk Students"
             value={riskyStudents.length}
-            subtitle="Immediate attention required"
+            subtitle="Under 60% threshold"
             icon="⚠️"
-            valueClass="text-red-400"
+            valueClass="text-rose-400"
           />
         </section>
 
-        {/* Overall Class Performance */}
-        <section className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-7">
+        {/* Performance Distribution Indicators */}
+        <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <PerformanceCard
-            title="Class Overall Score"
+            title="Classroom Aggregated Performance"
             value={averageOverall}
-            description="Combined attendance and behavior"
+            description="Combined attendance (40%) and attention behavior (60%)"
           />
-
           <StatusCard
-            title="Good Students"
+            title="Compliant Students (Good)"
             value={goodStudents.length}
-            description="Overall score 75% or above"
+            description="Scoring above 75% overall engagement"
             type="good"
           />
-
           <StatusCard
-            title="Warning Students"
+            title="Borderline (Warning)"
             value={warningStudents.length}
-            description="Overall score between 60% and 74%"
+            description="Scoring between 60% and 74%"
             type="warning"
           />
         </section>
 
-        {/* Risk Alert */}
+        {/* At-Risk Alert Banner */}
         {riskyStudents.length > 0 && (
-          <section className="bg-red-500/10 border border-red-500/30 rounded-2xl p-5 mb-7 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <section className="bg-rose-950/40 border border-rose-500/30 rounded-2xl p-5 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-start gap-4">
-              <div className="text-3xl">
-                🚨
-              </div>
-
+              <div className="text-3xl">🚨</div>
               <div>
-                <h3 className="text-lg font-bold text-red-300">
-                  Student Risk Alert
+                <h3 className="text-base font-bold text-rose-300">
+                  Academic Performance Notice
                 </h3>
-
-                <p className="text-gray-300 mt-1">
-                  {riskyStudents.length} student
-                  {riskyStudents.length !== 1 ? "s have" : " has"} an overall
-                  score below 60%.
+                <p className="text-slate-300 text-xs mt-1">
+                  {riskyStudents.length} student{riskyStudents.length !== 1 ? "s have" : " has"} an aggregate score below 60%.
                 </p>
               </div>
             </div>
@@ -892,163 +643,102 @@ export default function LecturerDashboard() {
             <button
               onClick={notifyStudents}
               disabled={notifying}
-              className="bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed px-5 py-3 rounded-lg font-semibold transition"
+              className="bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition shadow-lg shadow-rose-600/30"
             >
-              {notifying ? "Sending Notifications..." : "Notify Risk Students"}
+              {notifying ? "Dispatching Emails..." : "Notify Risk Students"}
             </button>
           </section>
         )}
 
-        {/* Actions */}
-        <section className="flex flex-col lg:flex-row justify-between gap-4 mb-7">
-          <div className="flex flex-col sm:flex-row gap-3 flex-1">
+        {/* Search & Filter Bar */}
+        <section className="flex flex-col sm:flex-row justify-between gap-4">
+          <div className="flex flex-1 gap-3">
             <input
               type="text"
-              placeholder="Search by student ID, name or intake..."
+              placeholder="Filter by student ID, name or intake..."
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              className="flex-1 bg-[#0b2236] border border-white/10 p-3 rounded-xl outline-none focus:border-blue-500 transition"
+              onChange={(e) => setSearch(e.target.value)}
+              className="flex-1 bg-[#081526] border border-slate-800 p-3 rounded-xl outline-none focus:border-blue-500 text-xs text-white"
             />
-
             <select
               value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
-              className="bg-[#0b2236] border border-white/10 p-3 rounded-xl outline-none focus:border-blue-500"
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="bg-[#081526] border border-slate-800 p-3 rounded-xl outline-none focus:border-blue-500 text-xs text-slate-300"
             >
-              <option value="all">
-                All Students
-              </option>
-
-              <option value="good">
-                Good Students
-              </option>
-
-              <option value="warning">
-                Warning Students
-              </option>
-
-              <option value="risk">
-                Risk Students
-              </option>
+              <option value="all">All Statuses</option>
+              <option value="good">Good Status</option>
+              <option value="warning">Warning</option>
+              <option value="risk">At-Risk</option>
             </select>
           </div>
 
-          <div className="flex gap-3">
-            <button
-              onClick={loadDashboard}
-              className="px-5 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition"
-            >
-              Refresh
-            </button>
-
-            <button
-              onClick={exportCSV}
-              className="px-5 py-3 rounded-xl bg-green-600 hover:bg-green-700 font-semibold transition"
-            >
-              Export CSV
-            </button>
-          </div>
+          <button
+            onClick={loadDashboard}
+            className="px-4 py-3 bg-[#081526] hover:bg-slate-800 border border-slate-800 rounded-xl text-xs font-bold transition text-slate-300"
+          >
+            ↻ Refresh Records
+          </button>
         </section>
 
-        {/* Analytics */}
-        <section className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-7">
-
-          {/* Attendance and Behavior Chart */}
-          <div className="bg-[#0b2236] border border-white/10 rounded-2xl p-5">
-            <div className="mb-5">
-              <h2 className="text-xl font-bold">
-                Attendance vs Behavior
+        {/* Analytics Charts */}
+        <section className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+          {/* Attendance vs Behavior */}
+          <div className="bg-[#081526] border border-slate-800 rounded-2xl p-5 shadow-xl">
+            <div className="mb-4">
+              <h2 className="text-sm font-bold text-white uppercase tracking-wide">
+                Cohort Engagement (Top 10)
               </h2>
-
-              <p className="text-sm text-gray-400 mt-1">
-                Top 10 students based on overall ranking
+              <p className="text-xs text-slate-400 mt-0.5">
+                Attendance rate compared with computer-vision attention score
               </p>
             </div>
 
             {performanceData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={320}>
-                <BarChart
-                  data={performanceData}
-                  margin={{
-                    top: 10,
-                    right: 10,
-                    left: -20,
-                    bottom: 30,
-                  }}
-                >
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke="#334155"
-                    vertical={false}
-                  />
-
-                  <XAxis
-                    dataKey="name"
-                    stroke="#94a3b8"
-                    angle={-20}
-                    textAnchor="end"
-                    height={70}
-                    tick={{
-                      fontSize: 11,
-                    }}
-                  />
-
-                  <YAxis
-                    domain={[0, 100]}
-                    stroke="#94a3b8"
-                  />
-
+              <ResponsiveContainer width="100%" height={290}>
+                <BarChart data={performanceData} margin={{ top: 10, right: 10, left: -20, bottom: 25 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                  <XAxis dataKey="name" stroke="#64748b" angle={-15} textAnchor="end" height={50} tick={{ fontSize: 10 }} />
+                  <YAxis domain={[0, 100]} stroke="#64748b" tick={{ fontSize: 10 }} />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: "#0f172a",
-                      border: "1px solid #334155",
+                      backgroundColor: "#0b1a2e",
+                      border: "1px solid #1e293b",
                       borderRadius: "10px",
+                      color: "#fff",
+                      fontSize: "12px",
                     }}
                   />
-
-                  <Legend />
-
-                  <Bar
-                    dataKey="Attendance"
-                    fill={CHART_COLORS.attendance}
-                    radius={[5, 5, 0, 0]}
-                  />
-
-                  <Bar
-                    dataKey="Behaviour"
-                    fill={CHART_COLORS.behavior}
-                    radius={[5, 5, 0, 0]}
-                  />
+                  <Legend wrapperStyle={{ fontSize: "11px" }} />
+                  <Bar dataKey="Attendance" fill={CHART_COLORS.attendance} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Behaviour" fill={CHART_COLORS.behavior} radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <EmptyChart message="No performance data available for this classroom." />
+              <EmptyChart message="No performance metrics registered for current classroom." />
             )}
           </div>
 
-          {/* Behavior Distribution */}
-          <div className="bg-[#0b2236] border border-white/10 rounded-2xl p-5">
-            <div className="mb-5">
-              <h2 className="text-xl font-bold">
-                Behavior Distribution
+          {/* Behavior Breakdown Pie */}
+          <div className="bg-[#081526] border border-slate-800 rounded-2xl p-5 shadow-xl">
+            <div className="mb-4">
+              <h2 className="text-sm font-bold text-white uppercase tracking-wide">
+                Cumulative AI Behavioral Breakdown
               </h2>
-
-              <p className="text-sm text-gray-400 mt-1">
-                Overall classroom behavior analysis
+              <p className="text-xs text-slate-400 mt-0.5">
+                Ratio of monitored classroom posture and gaze events
               </p>
             </div>
 
             {behaviourData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={320}>
+              <ResponsiveContainer width="100%" height={290}>
                 <PieChart>
                   <Pie
                     data={behaviourData}
                     dataKey="value"
                     nameKey="name"
                     innerRadius={65}
-                    outerRadius={105}
+                    outerRadius={95}
                     paddingAngle={3}
-                    label={({ name, value }) => `${name} ${value}%`}
                   >
                     <Cell fill={CHART_COLORS.attentive} />
                     <Cell fill={CHART_COLORS.cheating} />
@@ -1056,164 +746,86 @@ export default function LecturerDashboard() {
                     <Cell fill={CHART_COLORS.sleeping} />
                     <Cell fill="#64748b" />
                   </Pie>
-
                   <Tooltip
                     formatter={(value) => `${value}%`}
                     contentStyle={{
-                      backgroundColor: "#0f172a",
-                      border: "1px solid #334155",
+                      backgroundColor: "#0b1a2e",
+                      border: "1px solid #1e293b",
                       borderRadius: "10px",
+                      color: "#fff",
+                      fontSize: "12px",
                     }}
                   />
-
-                  <Legend />
+                  <Legend wrapperStyle={{ fontSize: "11px" }} />
                 </PieChart>
               </ResponsiveContainer>
             ) : (
-              <EmptyChart message="No behavior records available." />
+              <EmptyChart message="No behavioral records detected." />
             )}
           </div>
         </section>
 
-        {/* Risk Distribution */}
-        <section className="bg-[#0b2236] border border-white/10 rounded-2xl p-5 mb-7">
-          <div className="mb-5">
-            <h2 className="text-xl font-bold">
-              Student Performance Distribution
-            </h2>
-
-            <p className="text-sm text-gray-400 mt-1">
-              Good, warning and risk student categories
-            </p>
-          </div>
-
-          {students.length > 0 ? (
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={riskData}
-                  dataKey="value"
-                  nameKey="name"
-                  innerRadius={70}
-                  outerRadius={110}
-                  paddingAngle={4}
-                  label={({ name, value }) => `${name} (${value})`}
-                >
-                  <Cell fill={CHART_COLORS.good} />
-                  <Cell fill={CHART_COLORS.warning} />
-                  <Cell fill={CHART_COLORS.risk} />
-                </Pie>
-
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "#0f172a",
-                    border: "1px solid #334155",
-                    borderRadius: "10px",
-                  }}
-                />
-
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-          ) : (
-            <EmptyChart message="No student data available for this classroom." />
-          )}
-        </section>
-
         {/* Student Table */}
-        <section className="bg-[#0b2236] border border-white/10 rounded-2xl overflow-hidden">
-          <div className="p-5 border-b border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <section className="bg-[#081526] border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
+          <div className="p-5 border-b border-slate-800 flex justify-between items-center">
             <div>
-              <h2 className="text-xl font-bold">
-                Student Performance Ranking
+              <h2 className="text-sm font-bold text-white uppercase tracking-wide">
+                Classroom Student Index
               </h2>
-
-              <p className="text-sm text-gray-400 mt-1">
-                Showing {filteredStudents.length} of {students.length} students
+              <p className="text-xs text-slate-400 mt-0.5">
+                Showing {filteredStudents.length} of {students.length} students enrolled
               </p>
             </div>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px]">
-              <thead className="bg-[#091d30]">
-                <tr className="text-left text-gray-300">
-                  <th className="p-4 text-center">Rank</th>
-                  <th className="p-4">Student</th>
-                  <th className="p-4">Intake</th>
-                  <th className="p-4 text-center">Attendance</th>
-                  <th className="p-4 text-center">Behavior</th>
-                  <th className="p-4 text-center">Overall</th>
-                  <th className="p-4 text-center">Status</th>
-                  <th className="p-4 text-center">Action</th>
+            <table className="w-full min-w-[900px] text-left">
+              <thead className="bg-[#0b1a2e] text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                <tr>
+                  <th className="p-3.5 text-center">Rank</th>
+                  <th className="p-3.5">Student</th>
+                  <th className="p-3.5">Intake</th>
+                  <th className="p-3.5 text-center">Attendance</th>
+                  <th className="p-3.5 text-center">Attention</th>
+                  <th className="p-3.5 text-center">Aggregate</th>
+                  <th className="p-3.5 text-center">Status</th>
+                  <th className="p-3.5 text-center">Action</th>
                 </tr>
               </thead>
-
-              <tbody>
+              <tbody className="divide-y divide-slate-800 text-sm">
                 {filteredStudents.length > 0 ? (
                   filteredStudents.map((student) => {
-                    const actualRank =
-                      students.findIndex((item) => item.id === student.id) + 1;
-
+                    const actualRank = students.findIndex((item) => item.id === student.id) + 1;
                     return (
-                      <tr
-                        key={student.id}
-                        className="border-t border-white/5 hover:bg-white/5 transition"
-                      >
-                        <td className="p-4 text-center">
-                          <span className="font-bold text-blue-300">
-                            #{actualRank}
-                          </span>
+                      <tr key={student.id} className="hover:bg-[#0c1e36]/50 transition">
+                        <td className="p-3.5 text-center font-mono font-bold text-blue-400">
+                          #{actualRank}
                         </td>
-
-                        <td className="p-4">
-                          <div>
-                            <p className="font-semibold">
-                              {student.name}
-                            </p>
-
-                            <p className="text-sm text-gray-400 mt-1">
-                              {student.id}
-                            </p>
-                          </div>
+                        <td className="p-3.5">
+                          <p className="font-semibold text-white">{student.name}</p>
+                          <p className="text-xs font-mono text-slate-400">{student.id}</p>
                         </td>
-
-                        <td className="p-4 text-gray-300">
-                          {student.intake}
-                        </td>
-
-                        <td className="p-4 text-center">
+                        <td className="p-3.5 text-slate-300 text-xs">{student.intake}</td>
+                        <td className="p-3.5 text-center">
                           <ScoreBadge value={student.attendance} />
                         </td>
-
-                        <td className="p-4 text-center">
+                        <td className="p-3.5 text-center">
                           <ScoreBadge value={student.behavior} />
                         </td>
-
-                        <td
-                          className={`p-4 text-center text-lg font-bold ${getScoreClass(
-                            student.overall
-                          )}`}
-                        >
+                        <td className={`p-3.5 text-center font-bold ${getScoreClass(student.overall)}`}>
                           {student.overall}%
                         </td>
-
-                        <td className="p-4 text-center">
-                          <span
-                            className={`inline-flex px-3 py-1 rounded-full text-sm font-medium border ${getStatusClass(
-                              student.status
-                            )}`}
-                          >
+                        <td className="p-3.5 text-center">
+                          <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-bold border ${getStatusClass(student.status)}`}>
                             {getStatusText(student.status)}
                           </span>
                         </td>
-
-                        <td className="p-4 text-center">
+                        <td className="p-3.5 text-center">
                           <button
                             onClick={() => setSelected(student)}
-                            className="bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 px-4 py-2 rounded-lg transition"
+                            className="bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/30 px-3 py-1 rounded-lg text-xs font-bold transition"
                           >
-                            View Details
+                            Details
                           </button>
                         </td>
                       </tr>
@@ -1221,11 +833,8 @@ export default function LecturerDashboard() {
                   })
                 ) : (
                   <tr>
-                    <td
-                      colSpan="8"
-                      className="p-12 text-center text-gray-400"
-                    >
-                      No students found in this classroom match your search or filter.
+                    <td colSpan="8" className="p-10 text-center text-slate-500 text-xs">
+                      No matching students found for current classroom filter.
                     </td>
                   </tr>
                 )}
@@ -1234,69 +843,62 @@ export default function LecturerDashboard() {
           </div>
         </section>
 
-        {/* Lecturer Student Appeals View-Only Section */}
-        <section className="bg-[#0b2236] border border-white/10 rounded-2xl p-6 mt-7 shadow-xl">
-          <div className="flex justify-between items-center pb-4 mb-6 border-b border-gray-700">
+        {/* Appeals Status Log (Read-Only) */}
+        <section className="bg-[#081526] border border-slate-800 rounded-2xl p-6 shadow-xl">
+          <div className="flex justify-between items-center pb-4 mb-4 border-b border-slate-800">
             <div>
-              <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                <span>📜</span> Student Appeals Status Log
+              <h2 className="text-sm font-bold text-white uppercase tracking-wide">
+                Student Appeals Log (Classroom Audit)
               </h2>
-              <p className="text-gray-400 text-sm mt-1">
-                Monitor student submitted appeals and administrative review statuses.
+              <p className="text-xs text-slate-400 mt-0.5">
+                Overview of submitted student grievances and administrative resolutions
               </p>
             </div>
-            <span className="bg-blue-500/10 text-blue-400 border border-blue-500/30 text-xs font-bold px-3 py-1.5 rounded-full">
-              {appealsList?.length || 0} Total Appeals
+            <span className="bg-blue-500/10 text-blue-400 border border-blue-500/20 text-xs font-bold px-3 py-1 rounded-full">
+              {appealsList?.length || 0} Total
             </span>
           </div>
 
           {loadingAppeals ? (
-            <div className="text-center py-8 text-gray-400 text-sm">
-              ⏳ Loading student appeals...
-            </div>
+            <div className="text-center py-6 text-slate-500 text-xs">⏳ Loading appeals...</div>
           ) : !appealsList || appealsList.length === 0 ? (
-            <div className="text-center py-8 text-gray-400 text-sm bg-[#071828] rounded-xl border border-dashed border-gray-700">
-              No student appeals recorded yet.
+            <div className="text-center py-6 text-slate-500 text-xs bg-[#0b1a2e] rounded-xl border border-dashed border-slate-800">
+              No appeals logged for review.
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+              <table className="w-full text-left text-xs">
                 <thead>
-                  <tr className="border-b border-gray-700 text-xs font-semibold text-gray-400 uppercase bg-[#071828]">
-                    <th className="py-3 px-4">Student ID</th>
-                    <th className="py-3 px-4">Reason / Appeal</th>
-                    <th className="py-3 px-4">Submitted Date</th>
-                    <th className="py-3 px-4">Status</th>
-                    <th className="py-3 px-4">Admin Remarks</th>
+                  <tr className="border-b border-slate-800 text-slate-400 uppercase bg-[#0b1a2e]">
+                    <th className="py-2.5 px-3">Student ID</th>
+                    <th className="py-2.5 px-3">Appeal Reason</th>
+                    <th className="py-2.5 px-3">Date</th>
+                    <th className="py-2.5 px-3">Status</th>
+                    <th className="py-2.5 px-3">Resolution Remarks</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-800 text-sm">
+                <tbody className="divide-y divide-slate-800/60">
                   {appealsList.map((appeal, index) => (
-                    <tr key={appeal._id || index} className="hover:bg-[#0f2438]">
-                      <td className="py-4 px-4 font-mono font-bold text-blue-400">
+                    <tr key={appeal._id || index} className="hover:bg-[#0c1e36]/30">
+                      <td className="py-3 px-3 font-mono font-bold text-blue-400">
                         {appeal.student_id || appeal.user_id || "N/A"}
                       </td>
-                      <td className="py-4 px-4 text-gray-200 max-w-xs">
+                      <td className="py-3 px-3 text-slate-300 max-w-xs truncate">
                         {appeal.reason || appeal.message || appeal.description}
                       </td>
-                      <td className="py-4 px-4 text-gray-400 text-xs">
+                      <td className="py-3 px-3 text-slate-400">
                         {appeal.date || appeal.created_at?.substring(0, 10) || "N/A"}
                       </td>
-                      <td className="py-4 px-4">
-                        <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${
-                          appeal.status === "Approved" ? "bg-green-500/10 text-green-400 border-green-500/30" :
-                          appeal.status === "Rejected" ? "bg-red-500/10 text-red-400 border-red-500/30" :
-                          "bg-yellow-500/10 text-yellow-400 border-yellow-500/30"
-                        }`}>
+                      <td className="py-3 px-3">
+                        <span className={`px-2 py-0.5 rounded-full font-bold border ${appeal.status === "Approved" ? "bg-emerald-950/60 text-emerald-400 border-emerald-500/30" :
+                            appeal.status === "Rejected" ? "bg-rose-950/60 text-rose-400 border-rose-500/30" :
+                              "bg-amber-950/60 text-amber-400 border-amber-500/30"
+                          }`}>
                           {appeal.status || "Pending"}
                         </span>
                       </td>
-                      <td className="py-4 px-4 text-xs italic text-gray-300">
-                        {appeal.admin_response ? (
-                          <span className="text-gray-300">"{appeal.admin_response}"</span>
-                        ) : (
-                          <span className="text-gray-500">Pending review...</span>
-                        )}
+                      <td className="py-3 px-3 italic text-slate-400">
+                        {appeal.admin_response ? `"${appeal.admin_response}"` : "Pending decision..."}
                       </td>
                     </tr>
                   ))}
@@ -1305,6 +907,7 @@ export default function LecturerDashboard() {
             </div>
           )}
         </section>
+
       </main>
 
       {/* Student Detail Modal */}
@@ -1314,229 +917,144 @@ export default function LecturerDashboard() {
           onClick={() => setSelected(null)}
         >
           <div
-            className="bg-[#0b2236] border border-white/10 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden"
-            onClick={(event) => event.stopPropagation()}
+            className="bg-[#081526] border border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
           >
-            <div className="bg-gradient-to-r from-blue-600/30 to-purple-600/30 p-6 flex justify-between items-start">
+            <div className="bg-gradient-to-r from-blue-900/40 via-indigo-900/40 to-slate-900 p-6 flex justify-between items-start border-b border-slate-800">
               <div>
-                <p className="text-sm text-blue-300">
-                  STUDENT PROFILE
-                </p>
-
-                <h2 className="text-2xl font-bold mt-1">
-                  {selected.name}
-                </h2>
-
-                <p className="text-gray-300 mt-1">
-                  {selected.id}
-                </p>
+                <span className="text-xs font-bold uppercase tracking-wider text-blue-400">
+                  Student Verification Record
+                </span>
+                <h2 className="text-2xl font-black text-white mt-1">{selected.name}</h2>
+                <p className="text-xs font-mono text-slate-400">{selected.id}</p>
               </div>
 
               <button
                 onClick={() => setSelected(null)}
-                className="w-9 h-9 rounded-full bg-black/20 hover:bg-black/40 transition"
+                className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition flex items-center justify-center text-sm font-bold"
               >
                 ✕
               </button>
             </div>
 
-            <div className="p-6">
-              <div className="grid grid-cols-2 gap-4 mb-6">
-                <DetailItem
-                  label="Intake"
-                  value={selected.intake}
-                />
-
-                <DetailItem
-                  label="Email"
-                  value={selected.email}
-                />
-
-                <DetailItem
-                  label="Attendance Records"
-                  value={selected.attendanceRecords}
-                />
-
-                <DetailItem
-                  label="Behavior Records"
-                  value={selected.behaviorRecords}
-                />
+            <div className="p-6 space-y-5">
+              <div className="grid grid-cols-2 gap-3">
+                <DetailItem label="Intake" value={selected.intake} />
+                <DetailItem label="Email" value={selected.email} />
+                <DetailItem label="Attendance Logs" value={selected.attendanceRecords} />
+                <DetailItem label="Behavior Events" value={selected.behaviorRecords} />
               </div>
 
-              <div className="space-y-5">
-                <ProgressScore
-                  label="Attendance"
-                  value={selected.attendance}
-                />
-
-                <ProgressScore
-                  label="Behavior"
-                  value={selected.behavior}
-                />
-
-                <ProgressScore
-                  label="Overall Performance"
-                  value={selected.overall}
-                />
+              <div className="space-y-4 pt-2">
+                <ProgressScore label="Attendance Rate" value={selected.attendance} />
+                <ProgressScore label="Attention Integrity" value={selected.behavior} />
+                <ProgressScore label="Aggregate Score" value={selected.overall} />
               </div>
 
-              <div className="mt-6 bg-[#071828] rounded-xl p-4 flex items-center justify-between">
-                <span className="text-gray-400">
-                  Student Status
-                </span>
-
-                <span
-                  className={`px-4 py-2 rounded-full text-sm font-semibold border ${getStatusClass(
-                    selected.status
-                  )}`}
-                >
+              <div className="bg-[#0b1a2e] border border-slate-800 rounded-xl p-3.5 flex items-center justify-between">
+                <span className="text-xs text-slate-400 font-semibold">Evaluation Status</span>
+                <span className={`px-3 py-1 rounded-full text-xs font-bold border ${getStatusClass(selected.status)}`}>
                   {getStatusText(selected.status)}
                 </span>
               </div>
 
-              {selected.status === "risk" && (
-                <div className="mt-5 bg-red-500/10 border border-red-500/30 rounded-xl p-4">
-                  <h3 className="font-semibold text-red-300">
-                    AI Recommendation
-                  </h3>
-
-                  <p className="text-sm text-gray-300 mt-2">
-                    The student should improve lecture attendance, reduce phone
-                    usage, remain attentive and actively participate during
-                    classroom sessions.
-                  </p>
-                </div>
-              )}
-
               <button
                 onClick={() => setSelected(null)}
-                className="w-full mt-6 bg-blue-600 hover:bg-blue-700 py-3 rounded-xl font-semibold transition"
+                className="w-full bg-blue-600 hover:bg-blue-700 py-2.5 rounded-xl text-white font-bold text-xs transition"
               >
-                Close Details
+                Close Record
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Email Result Toast Popup */}
+      {emailToast && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-md bg-[#081526] border border-blue-500/40 text-slate-100 p-4 rounded-2xl shadow-2xl backdrop-blur-xl flex items-start gap-3">
+          <span className="text-2xl mt-0.5">📨</span>
+          <div className="flex-1">
+            <h4 className="text-xs font-bold text-blue-400 uppercase tracking-wider">
+              Notification Dispatch
+            </h4>
+            <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+              {emailToast}
+            </p>
+          </div>
+          <button
+            onClick={() => setEmailToast(null)}
+            className="text-slate-400 hover:text-white text-xs font-bold px-1.5 py-0.5 rounded-lg hover:bg-slate-800 transition"
+          >
+            ✕
+          </button>
         </div>
       )}
     </div>
   );
 }
 
-function SummaryCard({
-  title,
-  value,
-  subtitle,
-  icon,
-  valueClass = "text-white",
-}) {
+function SummaryCard({ title, value, subtitle, icon, valueClass = "text-white" }) {
   return (
-    <div className="bg-[#0b2236] border border-white/10 rounded-2xl p-5 hover:-translate-y-1 transition">
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-gray-400 text-sm">
-            {title}
-          </p>
-
-          <h2 className={`text-3xl font-bold mt-3 ${valueClass}`}>
-            {value}
-          </h2>
-
-          <p className="text-gray-500 text-sm mt-2">
-            {subtitle}
-          </p>
-        </div>
-
-        <div className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center text-2xl">
-          {icon}
-        </div>
+    <div className="bg-[#081526] border border-slate-800 rounded-2xl p-5 shadow-xl hover:border-slate-700 transition flex flex-col justify-between">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold uppercase tracking-wider text-slate-400">{title}</span>
+        <span className="text-xl p-1.5 bg-slate-900 rounded-xl border border-slate-800">{icon}</span>
       </div>
+      <div className={`text-3xl font-black mt-3 mb-1 tracking-tight ${valueClass}`}>{value}</div>
+      <span className="text-[11px] text-slate-400 font-semibold">{subtitle}</span>
     </div>
   );
 }
 
 function PerformanceCard({ title, value, description }) {
   return (
-    <div className="bg-[#0b2236] border border-white/10 rounded-2xl p-5">
-      <p className="text-gray-400">
-        {title}
-      </p>
-
-      <div className="flex items-end gap-2 mt-3">
-        <h2 className="text-4xl font-bold">
-          {value}%
-        </h2>
-
-        <span className="text-gray-400 mb-1">
-          average
-        </span>
+    <div className="bg-[#081526] border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col justify-between">
+      <div>
+        <span className="text-xs font-bold uppercase tracking-wider text-slate-400">{title}</span>
+        <div className="text-4xl font-black text-white mt-2">{value}%</div>
       </div>
-
-      <div className="w-full h-2 bg-[#071828] rounded-full mt-5 overflow-hidden">
-        <div
-          className="h-full bg-blue-500 rounded-full transition-all duration-700"
-          style={{
-            width: `${Math.min(value, 100)}%`,
-          }}
-        />
+      <div className="w-full h-2 bg-slate-900 rounded-full mt-4 overflow-hidden border border-slate-800">
+        <div className="h-full bg-blue-500 rounded-full transition-all duration-700" style={{ width: `${Math.min(value, 100)}%` }} />
       </div>
-
-      <p className="text-sm text-gray-500 mt-3">
-        {description}
-      </p>
+      <p className="text-[11px] text-slate-400 mt-2">{description}</p>
     </div>
   );
 }
 
 function StatusCard({ title, value, description, type }) {
-  const classNames =
-    type === "good"
-      ? "text-green-400 bg-green-500/10 border-green-500/20"
-      : "text-yellow-400 bg-yellow-500/10 border-yellow-500/20";
-
+  const isGood = type === "good";
   return (
-    <div className={`border rounded-2xl p-5 ${classNames}`}>
-      <p className="text-gray-300">
-        {title}
-      </p>
-
-      <h2 className="text-4xl font-bold mt-3">
-        {value}
-      </h2>
-
-      <p className="text-sm text-gray-400 mt-3">
-        {description}
-      </p>
+    <div className="bg-[#081526] border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col justify-between">
+      <div>
+        <span className="text-xs font-bold uppercase tracking-wider text-slate-400">{title}</span>
+        <div className={`text-4xl font-black mt-2 ${isGood ? "text-emerald-400" : "text-amber-400"}`}>
+          {value}
+        </div>
+      </div>
+      <p className="text-[11px] text-slate-400 mt-4">{description}</p>
     </div>
   );
 }
 
 function ClassroomBadge({ label, value }) {
   return (
-    <div className="bg-black/20 border border-white/10 rounded-lg px-4 py-2">
-      <span className="text-gray-400">
-        {label}:
-      </span>
-
-      <span className="ml-2 font-semibold text-white">
-        {value}
-      </span>
+    <div className="bg-slate-900/90 border border-slate-800 rounded-lg px-3 py-1">
+      <span className="text-slate-500 text-[11px]">{label}:</span>{" "}
+      <span className="font-semibold text-slate-200 text-xs">{value}</span>
     </div>
   );
 }
 
 function ScoreBadge({ value }) {
-  let className = "bg-red-500/10 text-red-400";
-
+  let className = "bg-rose-950/60 text-rose-400 border-rose-500/30";
   if (value >= 75) {
-    className = "bg-green-500/10 text-green-400";
+    className = "bg-emerald-950/60 text-emerald-400 border-emerald-500/30";
   } else if (value >= 60) {
-    className = "bg-yellow-500/10 text-yellow-400";
+    className = "bg-amber-950/60 text-amber-400 border-amber-500/30";
   }
 
   return (
-    <span
-      className={`inline-flex min-w-[65px] justify-center px-3 py-1 rounded-lg font-semibold ${className}`}
-    >
+    <span className={`inline-flex min-w-[55px] justify-center px-2.5 py-0.5 rounded-md text-xs font-bold border ${className}`}>
       {value}%
     </span>
   );
@@ -1544,46 +1062,26 @@ function ScoreBadge({ value }) {
 
 function DetailItem({ label, value }) {
   return (
-    <div className="bg-[#071828] rounded-xl p-4">
-      <p className="text-xs text-gray-500">
-        {label}
-      </p>
-
-      <p className="font-semibold mt-1 break-all">
-        {value}
-      </p>
+    <div className="bg-[#0b1a2e] border border-slate-800 rounded-xl p-3">
+      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</p>
+      <p className="font-semibold text-white text-xs mt-1 truncate">{value}</p>
     </div>
   );
 }
 
 function ProgressScore({ label, value }) {
-  let barClass = "bg-red-500";
-
-  if (value >= 75) {
-    barClass = "bg-green-500";
-  } else if (value >= 60) {
-    barClass = "bg-yellow-500";
-  }
+  let barClass = "bg-rose-500";
+  if (value >= 75) barClass = "bg-emerald-500";
+  else if (value >= 60) barClass = "bg-amber-500";
 
   return (
     <div>
-      <div className="flex justify-between mb-2">
-        <span className="text-gray-300">
-          {label}
-        </span>
-
-        <span className="font-semibold">
-          {value}%
-        </span>
+      <div className="flex justify-between text-xs mb-1">
+        <span className="text-slate-400">{label}</span>
+        <span className="font-bold text-white">{value}%</span>
       </div>
-
-      <div className="w-full h-2 bg-[#071828] rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full ${barClass}`}
-          style={{
-            width: `${Math.min(value, 100)}%`,
-          }}
-        />
+      <div className="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
+        <div className={`h-full rounded-full ${barClass}`} style={{ width: `${Math.min(value, 100)}%` }} />
       </div>
     </div>
   );
@@ -1591,14 +1089,9 @@ function ProgressScore({ label, value }) {
 
 function EmptyChart({ message }) {
   return (
-    <div className="h-[300px] flex flex-col items-center justify-center text-gray-500">
-      <div className="text-4xl mb-3">
-        📊
-      </div>
-
-      <p>
-        {message}
-      </p>
+    <div className="h-[250px] flex flex-col items-center justify-center text-slate-500 text-xs">
+      <div className="text-3xl mb-2">📊</div>
+      <p>{message}</p>
     </div>
   );
 }

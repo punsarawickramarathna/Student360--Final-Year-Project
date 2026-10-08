@@ -1,11 +1,24 @@
 """
-Student360 Behavior Stabilization Engine
+behavior_engine.py
+Student360 behavior configuration.
 
-Purpose:
-- Keep behavior labels stable in live video.
-- Avoid one-frame false sleeping / phone-use detections.
-- Allow phone-use detections at a realistic confidence level.
-- Keep the public API used by process_video.py unchanged.
+IMPORTANT
+---------
+Classroom preset:
+    attentive, not_attentive, phone_use, sleeping
+
+Exam preset:
+    cheating, non_cheating
+
+Rules:
+- non_cheating is NEVER converted to attentive.
+- Classroom and exam "normal" states stay separate.
+- A single weak alert frame is not enough to replace a normal state.
+- Alert selection is based on repeated evidence + confidence, not only priority.
+- This module is intentionally compatible with process_video.py, which imports:
+      canonical_behavior
+      behavior_priority
+      BEHAVIOR_THRESHOLDS
 """
 
 from collections import deque
@@ -13,45 +26,53 @@ from time import time
 
 
 # ============================================================
-# BEHAVIOR CONFIGURATION
+# THRESHOLDS
 # ============================================================
 
-# IMPORTANT:
-# The previous phone threshold was 0.70.
-# That was too strict for the phone-use detector in this project.
-#
-# Phone use is usually a small-object detection, so we allow
-# lower raw confidence and rely on temporal confirmation to
-# suppress false positives.
 BEHAVIOR_THRESHOLDS = {
-    "attentive": 0.45,
-    "not_attentive": 0.55,
-    "phone_use": 0.30,
-    "sleeping": 0.55,
-    "cheating": 0.70,
+    # Classroom
+    "attentive": 0.30,
+    "not_attentive": 0.30,
+    "phone_use": 0.25,
+    "sleeping": 0.42,
+
+    # Exam
+    "cheating": 0.30,
+    "non_cheating": 0.20,
 }
 
-# Number of accepted observations required before switching
-# INTO an alert behavior.
-#
-# Phone use is intentionally faster because the phone is a
-# small object and may disappear from YOLO detection briefly.
+
+# Number of observations required before an alert is confirmed.
 CONFIRM_COUNTS = {
-    "not_attentive": 4,
+    "attentive": 3,
+    "not_attentive": 3,
     "phone_use": 2,
-    "sleeping": 5,
-    "cheating": 6,
-    "attentive": 4,
+    "sleeping": 3,
+
+    # Keep cheating responsive, but never one-frame.
+    "cheating": 2,
+    "non_cheating": 2,
 }
 
-HISTORY_SIZE = 20
-HISTORY_SECONDS = 2.0
 
-# Number of attentive observations required before leaving
-# an already-confirmed alert.
-ATTENTIVE_RELEASE_COUNT = 5
+# Evidence windows in seconds.
+EVIDENCE_WINDOWS = {
+    "attentive": 1.00,
+    "not_attentive": 2.00,
+    "phone_use": 2.00,
+    "sleeping": 2.50,
 
-# Extremely weak detections are ignored before they enter history.
+    "cheating": 2.00,
+    "non_cheating": 1.20,
+}
+
+
+HISTORY_SIZE = 60
+HISTORY_SECONDS = 2.50
+
+# Short hold avoids flicker but does not keep a wrong alert for too long.
+ALERT_HOLD_SECONDS = 0.90
+
 GLOBAL_MIN_CONFIDENCE = 0.20
 
 
@@ -62,8 +83,16 @@ GLOBAL_MIN_CONFIDENCE = 0.20
 ATTENTIVE_ALIASES = {
     "attentive",
     "normal",
-    "person",
     "focused",
+    "focus",
+}
+
+NON_CHEATING_ALIASES = {
+    "non_cheating",
+    "noncheating",
+    "not_cheating",
+    "notcheating",
+    "normal_exam",
 }
 
 PHONE_ALIASES = {
@@ -76,11 +105,16 @@ PHONE_ALIASES = {
     "cellphone",
     "mobile_phone",
     "mobile",
+    "using_mobile",
+    "mobile_use",
+    "phoneusing",
 }
 
 SLEEP_ALIASES = {
     "sleeping",
     "sleep",
+    "drowsy",
+    "drowsiness",
 }
 
 NOT_ATTENTIVE_ALIASES = {
@@ -88,18 +122,24 @@ NOT_ATTENTIVE_ALIASES = {
     "notattentive",
     "distracted",
     "not_focused",
+    "inattentive",
+    "distraction",
 }
 
 CHEATING_ALIASES = {
     "cheating",
     "malpractice",
+    "cheat",
 }
 
 
+# ============================================================
+# NORMALIZATION
+# ============================================================
+
 def normalize_behavior(label: str) -> str:
     value = str(label or "").strip().lower()
-    value = value.replace("-", "_").replace(" ", "_")
-    return value
+    return value.replace("-", "_").replace(" ", "_")
 
 
 def canonical_behavior(label: str) -> str:
@@ -107,6 +147,9 @@ def canonical_behavior(label: str) -> str:
 
     if value in ATTENTIVE_ALIASES:
         return "attentive"
+
+    if value in NON_CHEATING_ALIASES:
+        return "non_cheating"
 
     if value in PHONE_ALIASES:
         return "phone_use"
@@ -120,31 +163,81 @@ def canonical_behavior(label: str) -> str:
     if value in CHEATING_ALIASES:
         return "cheating"
 
+    # Keep generic detector labels harmless.
+    if value in {"person", "human", "student"}:
+        return "person"
+
     return value
 
 
 def behavior_priority(label: str) -> int:
+    """
+    Priority is only a tie-breaker after a behavior has already earned
+    confirmation. It must not make one weak cheating/sleeping frame win.
+    """
     value = canonical_behavior(label)
 
     return {
         "cheating": 100,
+        "phone_use": 95,
         "sleeping": 90,
-        "phone_use": 80,
         "not_attentive": 70,
         "attentive": 10,
+        "non_cheating": 10,
+        "person": 0,
     }.get(value, 20)
 
 
 # ============================================================
-# STABILIZER
+# HELPERS
+# ============================================================
+
+CLASSROOM_LABELS = {
+    "attentive",
+    "not_attentive",
+    "phone_use",
+    "sleeping",
+}
+
+EXAM_LABELS = {
+    "cheating",
+    "non_cheating",
+}
+
+
+def _behavior_mode(label: str):
+    label = canonical_behavior(label)
+
+    if label in EXAM_LABELS:
+        return "exam"
+
+    if label in CLASSROOM_LABELS:
+        return "classroom"
+
+    return None
+
+
+def _normal_label_for_mode(mode: str) -> str:
+    return "non_cheating" if mode == "exam" else "attentive"
+
+
+# ============================================================
+# GENERIC STABILIZER
 # ============================================================
 
 class BehaviorStabilizer:
     """
-    Maintains one confirmed behavior state per student.
+    Generic per-student stabilizer.
 
-    A single YOLO prediction cannot immediately change an alert
-    state. Repeated evidence is required.
+    process_video.py has its own dedicated live stabilizers, but other
+    Student360 routes can safely use this class.
+
+    Key protections:
+    - classroom/exam history is not mixed;
+    - non_cheating is never changed to attentive;
+    - one weak alert cannot win;
+    - when evidence is mixed, normal state wins;
+    - priority is only used after confirmation.
     """
 
     def __init__(self):
@@ -153,26 +246,37 @@ class BehaviorStabilizer:
     def reset(self):
         self.states.clear()
 
-    def _new_state(self):
+    def _new_state(self, mode="classroom"):
         now = time()
+        normal = _normal_label_for_mode(mode)
 
         return {
-            "confirmed": "attentive",
+            "mode": mode,
+            "confirmed": normal,
             "confirmed_confidence": 1.0,
             "history": deque(maxlen=HISTORY_SIZE),
             "last_update": now,
             "last_change": now,
+            "last_alert": 0.0,
         }
 
-    def _get_state(self, student_id):
-        student_id = str(student_id)
+    def _get_state(self, student_id, mode=None):
+        key = str(student_id)
 
-        if student_id not in self.states:
-            self.states[student_id] = self._new_state()
+        if key not in self.states:
+            self.states[key] = self._new_state(mode or "classroom")
 
-        return self.states[student_id]
+        state = self.states[key]
 
-    def current(self, student_id: str):
+        # If the preset changes, reset history so classroom evidence cannot
+        # contaminate exam state or vice versa.
+        if mode and state.get("mode") != mode:
+            self.states[key] = self._new_state(mode)
+            state = self.states[key]
+
+        return state
+
+    def current(self, student_id):
         state = self._get_state(student_id)
 
         return {
@@ -181,144 +285,154 @@ class BehaviorStabilizer:
             "stable": True,
         }
 
-    def update(
-        self,
-        student_id: str,
-        raw_label: str,
-        confidence: float,
-        now: float | None = None,
-    ):
-        now = time() if now is None else now
+    @staticmethod
+    def _average(samples):
+        if not samples:
+            return 0.0
+        return sum(float(item[1]) for item in samples) / len(samples)
 
-        state = self._get_state(student_id)
+    def update(self, student_id, raw_label, confidence, now=None):
+        now = time() if now is None else float(now)
 
         label = canonical_behavior(raw_label)
+        mode = _behavior_mode(label)
+
+        # Ignore labels that are not part of either preset.
+        if mode is None:
+            state = self._get_state(student_id)
+            state["last_update"] = now
+            return self.current(student_id)
+
+        state = self._get_state(student_id, mode=mode)
         confidence = float(confidence or 0.0)
 
-        # Remove stale evidence.
-        while state["history"] and (
-            now - state["history"][0][2] > HISTORY_SECONDS
+        # Remove old observations.
+        while (
+            state["history"]
+            and now - float(state["history"][0][2]) > HISTORY_SECONDS
         ):
             state["history"].popleft()
 
-        state["last_update"] = now
-
-        threshold = BEHAVIOR_THRESHOLDS.get(
-            label,
-            GLOBAL_MIN_CONFIDENCE,
-        )
-
         threshold = max(
-            float(threshold),
+            float(BEHAVIOR_THRESHOLDS.get(label, GLOBAL_MIN_CONFIDENCE)),
             GLOBAL_MIN_CONFIDENCE,
         )
 
-        # Weak prediction does not enter history.
-        if confidence < threshold:
-            return self.current(student_id)
+        # Normal labels are always valid observations.
+        # Alert labels must pass their confidence gate first.
+        if label in {"attentive", "non_cheating"}:
+            state["history"].append((label, confidence, now))
+        elif confidence >= threshold:
+            state["history"].append((label, confidence, now))
+            state["last_alert"] = now
 
-        state["history"].append(
-            (label, confidence, now)
-        )
+        normal_label = _normal_label_for_mode(mode)
 
-        # Gather recent evidence by behavior.
-        evidence = {}
+        if mode == "exam":
+            alert_labels = {"cheating"}
+        else:
+            alert_labels = {
+                "phone_use",
+                "sleeping",
+                "not_attentive",
+            }
 
-        for item_label, item_conf, item_time in state["history"]:
-            if now - item_time <= HISTORY_SECONDS:
-                evidence.setdefault(
-                    item_label,
-                    []
-                ).append(
-                    (item_conf, item_time)
+        confirmed_alerts = []
+
+        for candidate in alert_labels:
+            window = EVIDENCE_WINDOWS.get(candidate, 2.0)
+
+            samples = [
+                item
+                for item in state["history"]
+                if item[0] == candidate
+                and now - float(item[2]) <= window
+            ]
+
+            required = int(CONFIRM_COUNTS.get(candidate, 3))
+
+            if len(samples) < required:
+                continue
+
+            average = self._average(samples)
+
+            if average < float(
+                BEHAVIOR_THRESHOLDS.get(
+                    candidate,
+                    GLOBAL_MIN_CONFIDENCE,
+                )
+            ):
+                continue
+
+            # Extra exam protection:
+            # cheating should occupy a meaningful share of recent exam
+            # observations before replacing non_cheating.
+            if mode == "exam":
+                recent_exam = [
+                    item
+                    for item in state["history"]
+                    if item[0] in EXAM_LABELS
+                    and now - float(item[2]) <= EVIDENCE_WINDOWS["cheating"]
+                ]
+
+                cheating_ratio = (
+                    len(samples) / len(recent_exam)
+                    if recent_exam
+                    else 0.0
                 )
 
-        if not evidence:
-            return self.current(student_id)
+                if cheating_ratio < 0.50:
+                    continue
 
-        # Candidate ranking:
-        # 1. number of observations
-        # 2. average confidence
-        # 3. behavior priority
-        candidates = []
-
-        for candidate, samples in evidence.items():
-            average = sum(
-                sample[0] for sample in samples
-            ) / len(samples)
-
-            candidates.append(
+            confirmed_alerts.append(
                 (
-                    len(samples),
                     average,
+                    len(samples),
                     behavior_priority(candidate),
                     candidate,
                 )
             )
 
-        candidates.sort(reverse=True)
+        if confirmed_alerts:
+            # Confidence first, then evidence count, then priority.
+            # This prevents high-priority cheating/sleeping from winning
+            # merely because of its label.
+            confirmed_alerts.sort(reverse=True)
+            average, _, _, winner = confirmed_alerts[0]
 
-        _, average_confidence, _, candidate = candidates[0]
+            state["confirmed"] = winner
+            state["confirmed_confidence"] = average
+            state["last_change"] = now
+            state["last_update"] = now
 
-        current = state["confirmed"]
+            return self.current(student_id)
 
-        # ====================================================
-        # ALERT BEHAVIOR
-        # ====================================================
+        # Briefly hold a confirmed alert to avoid flicker.
+        if (
+            state["confirmed"] != normal_label
+            and now - float(state["last_alert"]) <= ALERT_HOLD_SECONDS
+        ):
+            state["last_update"] = now
+            return self.current(student_id)
 
-        if candidate != "attentive":
+        # Return to the correct normal state for the selected preset.
+        normal_window = EVIDENCE_WINDOWS.get(normal_label, 1.0)
 
-            required_count = CONFIRM_COUNTS.get(
-                candidate,
-                5,
-            )
+        normal_samples = [
+            item
+            for item in state["history"]
+            if item[0] == normal_label
+            and now - float(item[2]) <= normal_window
+        ]
 
-            required_confidence = BEHAVIOR_THRESHOLDS.get(
-                candidate,
-                GLOBAL_MIN_CONFIDENCE,
-            )
-
-            candidate_count = len(
-                evidence.get(candidate, [])
-            )
-
-            if (
-                candidate_count >= required_count
-                and average_confidence >= required_confidence
-            ):
-                if current != candidate:
-                    state["confirmed"] = candidate
-                    state["confirmed_confidence"] = average_confidence
-                    state["last_change"] = now
-                else:
-                    state["confirmed_confidence"] = average_confidence
-
-        # ====================================================
-        # RETURN TO ATTENTIVE
-        # ====================================================
-
+        if normal_samples:
+            normal_average = self._average(normal_samples)
         else:
-            attentive_samples = evidence.get(
-                "attentive",
-                [],
-            )
+            normal_average = 1.0
 
-            attentive_count = len(
-                attentive_samples
-            )
-
-            if attentive_count >= ATTENTIVE_RELEASE_COUNT:
-
-                attentive_average = sum(
-                    sample[0]
-                    for sample in attentive_samples
-                ) / attentive_count
-
-                if current != "attentive":
-                    state["confirmed"] = "attentive"
-                    state["confirmed_confidence"] = attentive_average
-                    state["last_change"] = now
-                else:
-                    state["confirmed_confidence"] = attentive_average
+        state["confirmed"] = normal_label
+        state["confirmed_confidence"] = normal_average
+        state["last_change"] = now
+        state["last_update"] = now
 
         return self.current(student_id)
