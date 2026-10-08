@@ -41,6 +41,30 @@ app.add_middleware(
 )
 
 # ============================================================
+# STATIC FILES SERVING (UPLOADS & REAL EVIDENCE SNAPSHOTS)
+# ============================================================
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
+EVIDENCE_DIR = os.path.join(UPLOAD_DIR, "evidence")
+
+# Ensure evidence storage directories exist
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+os.makedirs(EVIDENCE_DIR, exist_ok=True)
+
+# Mount both parent /uploads and direct /evidence-images paths
+app.mount(
+    "/uploads",
+    StaticFiles(directory=UPLOAD_DIR),
+    name="uploads"
+)
+app.mount(
+    "/evidence-images",
+    StaticFiles(directory=EVIDENCE_DIR),
+    name="evidence-images"
+)
+
+# ============================================================
 # BASE ROUTERS
 # ============================================================
 
@@ -61,7 +85,11 @@ app.include_router(
     tags=["AI Engine"]
 )
 app.include_router(upload_router)
-app.include_router(evidence_router)
+
+# Evidence routes mounted for direct and prefixed API access
+app.include_router(evidence_router, tags=["Evidence"])
+app.include_router(evidence_router, prefix="/api/evidence", tags=["Evidence API"])
+
 app.include_router(timeline_router)
 app.include_router(sessions_router)
 app.include_router(email_router)
@@ -90,16 +118,3 @@ def home():
         "service": "Student360 Backend Core",
         "message": "Student360 Backend Running Successfully"
     }
-
-# ============================================================
-# STATIC FILES SERVING (UPLOADS & EVIDENCE)
-# ============================================================
-
-UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-app.mount(
-    "/uploads",
-    StaticFiles(directory=UPLOAD_DIR),
-    name="uploads"
-)
