@@ -22,6 +22,28 @@ def update_profile(student_id: str, data: dict):
         raise HTTPException(status_code=404, detail="User not found")
     
     return {"message": "Profile updated successfully"}
+@router.put("/{user_type}/{user_id}")
+async def update_user(user_type: str, user_id: str, data: dict):
+    try:
+        collection = db.students if user_type == "student" else db.users
+        
+        result = collection.update_one(
+            {"_id": ObjectId(user_id)},
+            {"$set": {
+                "name": data.get("name"),
+                "email": data.get("email"),
+                "department": data.get("department"),
+                "intake": data.get("intake"),
+                "student_id": data.get("student_id")
+            }}
+        )
+
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        return {"status": "success", "message": f"{user_type} updated successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/all")
 async def get_all_users():

@@ -217,7 +217,7 @@ export default function LecturerDashboard() {
           behavior: behaviorScore,
           overall,
           status,
-          email: student.email || `${String(studentId).toLowerCase()}@gmail.com`,
+          email: student.email || "",
           attendanceRecords: attendanceRecords.length,
           behaviorRecords: behaviorRecords.length,
         };
@@ -367,7 +367,7 @@ export default function LecturerDashboard() {
     window.URL.revokeObjectURL(url);
   };
 
-  const notifyStudents = async () => {
+ const notifyStudents = async () => {
     if (riskyStudents.length === 0) {
       alert("There are no risk students to notify.");
       return;
@@ -379,91 +379,29 @@ export default function LecturerDashboard() {
       return;
     }
 
-    const studentList = riskyStudents
-      .map(
-        (student) => `
-          <tr>
-            <td style="padding:10px;border-bottom:1px solid #e5e7eb;">${student.name}</td>
-            <td style="padding:10px;border-bottom:1px solid #e5e7eb;">${student.id}</td>
-            <td style="padding:10px;border-bottom:1px solid #e5e7eb;color:#ef4444;font-weight:bold;">${student.overall}%</td>
-          </tr>
-        `
-      )
-      .join("");
-
-    const htmlBody = `
-      <!DOCTYPE html>
-      <html>
-        <head><meta charset="UTF-8" /></head>
-        <body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,sans-serif;">
-          <table width="100%" cellpadding="0" cellspacing="0">
-            <tr>
-              <td align="center" style="padding:30px 10px;">
-                <table width="650" cellpadding="0" cellspacing="0" style="max-width:650px;background:white;border-radius:12px;overflow:hidden;box-shadow:0 0 15px rgba(0,0,0,.1);">
-                  <tr>
-                    <td style="background:#0f172a;padding:25px;color:white;text-align:center;">
-                      <h1 style="margin:0;">🎓 Student360 AI</h1>
-                      <p style="margin-top:8px;">AI Classroom Analytics System</p>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding:35px;">
-                      <h2 style="color:#ef4444;">Academic Performance Alert</h2>
-                      <p>Dear Student,</p>
-                      <p>The Student360 AI Classroom Monitoring System has identified that your classroom performance requires attention.</p>
-                      <div style="margin-top:25px;background:#fef3c7;padding:18px;border-left:6px solid #f59e0b;">
-                        <strong>AI Recommendation</strong>
-                        <p>Attend lectures regularly, stay attentive, avoid phone usage and actively participate in classroom activities.</p>
-                      </div>
-                      <h3 style="margin-top:25px;">Students Requiring Attention</h3>
-                      <table width="100%" style="border-collapse:collapse;margin-top:10px;">
-                        <tr style="background:#f3f4f6;">
-                          <th align="left" style="padding:10px;">Name</th>
-                          <th align="left" style="padding:10px;">Student ID</th>
-                          <th align="left" style="padding:10px;">Overall</th>
-                        </tr>
-                        ${studentList}
-                      </table>
-                    </td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
-          </table>
-        </body>
-      </html>
-    `;
+    const currentLecturer = "Lecturer"; 
 
     try {
       setNotifying(true);
-      const response = await sendEmail({
-        emails,
-        subject: "Student360 AI - Academic Performance Alert",
-        body: htmlBody,
+      
+      await axios.post("http://localhost:8000/notify-risk", {
+        emails: emails,
+        lecturer_name: currentLecturer
       });
 
-      const successCount =
-        response?.success_count ?? response?.data?.success_count ?? 0;
-      const failedCount =
-        response?.failed_count ?? response?.data?.failed_count ?? 0;
-      const toastMsg =
-        response?.message ||
-        `Emails sent successfully to ${successCount} student(s). ${failedCount} invalid/failed emails were skipped.`;
-
+      const toastMsg = "Emails sent successfully to Risk students via Gmail!";
       setEmailToast(toastMsg);
       alert(toastMsg);
     } catch (err) {
       console.error("Email sending error:", err);
-      const errMsg =
-        err?.response?.data?.detail ||
-        err?.message ||
-        "Email sending failed. Please check the backend.";
+      const errMsg = "Email sending failed. Please check the backend console.";
       setEmailToast(errMsg);
       alert(errMsg);
     } finally {
       setNotifying(false);
     }
   };
+    
 
   function getStatusText(status) {
     if (status === "good") return "Good";
