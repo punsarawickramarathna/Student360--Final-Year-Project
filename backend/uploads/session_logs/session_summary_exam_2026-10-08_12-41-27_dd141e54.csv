@@ -1,0 +1,5 @@
+Student_ID,Date,Arrival_Time,cheating_sec,non_cheating_sec,attentive_sec,sleeping_sec,phone_use_sec,not_attentive_sec
+ITBIN-2211-0320,2026-10-08,12:39:13,0.0,37.13,0.0,0.0,0.0,0.0
+ITBNM-2211-0112,2026-10-08,12:39:13,0.0,37.13,0.0,0.0,0.0,0.0
+ITBIN-2211-0317,2026-10-08,12:39:13,0.0,37.13,0.0,0.0,0.0,0.0
+ITBIN-2211-0253,2026-10-08,12:39:13,5.66,31.47,0.0,0.0,0.0,5.66

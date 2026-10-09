@@ -1,6 +1,6 @@
 // src/pages/lecturer/LiveMonitoring.jsx
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 
@@ -8,9 +8,11 @@ const API_BASE = "http://127.0.0.1:8000/api/ai-engine";
 
 export default function LiveMonitoring() {
   const navigate = useNavigate();
+  const fileInputRef = useRef(null);
 
   const [selectedMode, setSelectedMode] = useState(null);
-  const [inputSource, setInputSource] = useState("camera");
+  const [inputSource, setInputSource] = useState("camera"); // 'camera' | 'demo' | 'custom_upload'
+  const [uploadedVideoFile, setUploadedVideoFile] = useState(null);
 
   const [isRunning, setIsRunning] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -19,11 +21,28 @@ export default function LiveMonitoring() {
   const [streamStatus, setStreamStatus] = useState("inactive");
   const [streamError, setStreamError] = useState("");
 
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (!file.type.startsWith("video/") && !file.name.match(/\.(mp4|avi|mov|mkv)$/i)) {
+        alert("Please select a valid video file (.mp4, .avi, .mkv)");
+        return;
+      }
+      setUploadedVideoFile(file);
+    }
+  };
+
   // =====================================
   // START AI SESSION
   // =====================================
   const startSession = async () => {
     if (!selectedMode || loading) return;
+
+    if (inputSource === "custom_upload" && !uploadedVideoFile) {
+      alert("Please choose an MP4 video file from your PC first!");
+      fileInputRef.current?.click();
+      return;
+    }
 
     try {
       setLoading(true);
@@ -31,60 +50,48 @@ export default function LiveMonitoring() {
       setStreamError("");
       setStreamUrl(null);
 
-      console.log(
-        "Starting AI Session:",
-        selectedMode,
-        "source:",
-        inputSource
-      );
+      let response;
 
-      const response = await axios.post(
-        `${API_BASE}/start-camera`,
-        {
-          mode: selectedMode,
-          source_type: inputSource,
-        },
-        {
-          timeout: 30000,
-        }
-      );
+      if (inputSource === "custom_upload" && uploadedVideoFile) {
+        // Upload custom PC video using FormData
+        const formData = new FormData();
+        formData.append("mode", selectedMode);
+        formData.append("source_type", "demo");
+        formData.append("video_file", uploadedVideoFile);
 
-      console.log(
-        "Start Session Response:",
-        response.data
-      );
-
-      if (response.data.status !== "success") {
-        throw new Error(
-          response.data.message ||
-            "AI session failed to start"
+        response = await axios.post(`${API_BASE}/start-camera`, formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+          timeout: 60000,
+        });
+      } else {
+        // Normal JSON payload for webcam or preset demo
+        response = await axios.post(
+          `${API_BASE}/start-camera`,
+          {
+            mode: selectedMode,
+            source_type: inputSource,
+          },
+          { timeout: 30000 }
         );
       }
 
-      const newStreamUrl =
-        `${API_BASE}/video-feed?t=${Date.now()}`;
+      if (response.data.status !== "success") {
+        throw new Error(response.data.message || "AI session failed to start");
+      }
 
+      const newStreamUrl = `${API_BASE}/video-feed?t=${Date.now()}`;
       setStreamUrl(newStreamUrl);
       setIsRunning(true);
       setStreamStatus("connecting");
     } catch (err) {
-      console.error(
-        "AI Session Start Error:",
-        err
-      );
-
+      console.error("AI Session Start Error:", err);
       const message =
-        err.response?.data?.detail ||
-        err.message ||
-        "Unable to start AI session";
+        err.response?.data?.detail || err.message || "Unable to start AI session";
 
       setStreamError(message);
       setStreamStatus("error");
       setIsRunning(false);
-
-      alert(
-        "AI Session Error: " + message
-      );
+      alert("AI Session Error: " + message);
     } finally {
       setLoading(false);
     }
@@ -96,48 +103,24 @@ export default function LiveMonitoring() {
   const stopSession = async () => {
     try {
       setLoading(true);
-
-      const response = await axios.post(
-        `${API_BASE}/stop-camera`,
-        {},
-        {
-          timeout: 60000,
-        }
-      );
-
-      console.log(
-        "Stop Session Response:",
-        response.data
-      );
+      const response = await axios.post(`${API_BASE}/stop-camera`, {}, { timeout: 60000 });
 
       setIsRunning(false);
       setSelectedMode(null);
       setStreamUrl(null);
       setStreamStatus("inactive");
       setStreamError("");
+      setUploadedVideoFile(null);
 
-      alert(
-        response.data.message ||
-          "AI session stopped"
-      );
+      alert(response.data.message || "AI session stopped");
     } catch (err) {
-      console.error(
-        "AI Session Stop Error:",
-        err
-      );
-
-      alert(
-        err.response?.data?.detail ||
-          "Failed to stop AI session"
-      );
+      console.error("AI Session Stop Error:", err);
+      alert(err.response?.data?.detail || "Failed to stop AI session");
     } finally {
       setLoading(false);
     }
   };
 
-  // =====================================
-  // CLEANUP
-  // =====================================
   useEffect(() => {
     return () => {
       setStreamUrl(null);
@@ -145,528 +128,323 @@ export default function LiveMonitoring() {
   }, []);
 
   const handleStreamLoad = () => {
-    console.log(
-      "Video stream connected"
-    );
-
     setStreamStatus("connected");
     setStreamError("");
   };
 
   const handleStreamError = () => {
-    console.error(
-      "Video stream failed"
-    );
-
     setStreamStatus("error");
-
-    setStreamError(
-      "Unable to receive AI frames. Check backend video-feed endpoint."
-    );
+    setStreamError("Unable to receive AI frames. Check backend video-feed endpoint.");
   };
 
   const sourceTitle =
     inputSource === "camera"
       ? "Live Camera"
+      : inputSource === "custom_upload"
+      ? "Uploaded PC Video"
       : "Pre-recorded Demo Video";
 
   const launchText =
     inputSource === "camera"
       ? "Launch Live AI Camera"
+      : inputSource === "custom_upload"
+      ? `Launch Uploaded Video (${selectedMode === "exam" ? "Exam" : "Classroom"})`
       : selectedMode === "exam"
       ? "Launch Exam Demo Video"
       : "Launch Classroom Demo Video";
 
   return (
     <div className="min-h-screen bg-[#071828] text-white p-6 flex flex-col justify-between">
-
       {/* HEADER */}
       <header className="flex justify-between items-center bg-[#091d30] border border-white/10 p-5 rounded-2xl">
-
         <div>
           <div className="flex items-center gap-2">
-
             <span className="w-3 h-3 rounded-full bg-blue-500 animate-pulse"></span>
-
             <span className="text-xs uppercase tracking-widest text-blue-400 font-bold">
               Student360 Vision Console
             </span>
-
           </div>
-
-          <h1 className="text-2xl font-bold mt-1">
-            Live Surveillance & AI Analytics Console
-          </h1>
+          <h1 className="text-2xl font-bold mt-1">Live Surveillance & AI Analytics Console</h1>
         </div>
 
         <button
-          onClick={() =>
-            navigate(
-              "/lecturer/dashboard"
-            )
-          }
+          onClick={() => navigate("/lecturer/dashboard")}
           className="px-5 py-2.5 bg-gray-800 hover:bg-gray-700 border border-white/10 rounded-xl text-sm font-semibold transition"
         >
           ← Return to Dashboard
         </button>
-
       </header>
 
       {/* MAIN */}
       <div className="my-6 grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1">
-
-        {/* LEFT SIDE */}
+        {/* LEFT CONFIGURATION PANEL */}
         <div className="bg-[#0b2236] border border-white/10 rounded-2xl p-6 flex flex-col justify-between">
-
           <div>
-
-            <h2 className="text-lg font-bold text-gray-200 mb-1">
-              Session Configuration
-            </h2>
-
+            <h2 className="text-lg font-bold text-gray-200 mb-1">Session Configuration</h2>
             <p className="text-xs text-gray-400 mb-6">
-              Select monitoring preset
-              and input source before
-              starting AI inference.
+              Select monitoring preset and input source before starting AI inference.
             </p>
 
             {/* PRESETS */}
             <div className="space-y-4">
-
-              {/* CLASSROOM */}
+              {/* CLASSROOM PRESET */}
               <div
                 onClick={() => {
-                  if (
-                    !isRunning &&
-                    !loading
-                  ) {
-                    setSelectedMode(
-                      "classroom"
-                    );
-                  }
+                  if (!isRunning && !loading) setSelectedMode("classroom");
                 }}
-                className={`
-                  p-5 rounded-2xl border
-                  cursor-pointer
-                  transition-all
-
-                  ${
-                    selectedMode ===
-                    "classroom"
-                      ? "bg-blue-600/20 border-blue-500 shadow-lg shadow-blue-500/20"
-                      : "bg-[#071828] border-white/10 hover:border-blue-400/50"
-                  }
-
-                  ${
-                    isRunning &&
-                    selectedMode !==
-                      "classroom"
-                      ? "opacity-40 cursor-not-allowed"
-                      : ""
-                  }
-                `}
+                className={`p-5 rounded-2xl border cursor-pointer transition-all ${
+                  selectedMode === "classroom"
+                    ? "bg-blue-600/20 border-blue-500 shadow-lg shadow-blue-500/20"
+                    : "bg-[#071828] border-white/10 hover:border-blue-400/50"
+                } ${isRunning && selectedMode !== "classroom" ? "opacity-40 cursor-not-allowed" : ""}`}
               >
-
-                <div className="text-2xl mb-2">
-                  🎓
-                </div>
-
-                <h3 className="font-bold text-base text-white">
-                  Smart Classroom Preset
-                </h3>
-
+                <div className="text-2xl mb-2">🎓</div>
+                <h3 className="font-bold text-base text-white">Smart Classroom Preset</h3>
                 <p className="text-xs text-gray-400 mt-1 leading-relaxed">
-                  Detects attentive,
-                  not-attentive,
-                  phone-use and sleeping
-                  behavior with automated
-                  student identity
-                  recognition.
+                  Detects attentive, not-attentive, phone-use and sleeping behavior with automated student identity recognition.
                 </p>
-
               </div>
 
-              {/* EXAM */}
+              {/* EXAM PRESET */}
               <div
                 onClick={() => {
-                  if (
-                    !isRunning &&
-                    !loading
-                  ) {
-                    setSelectedMode(
-                      "exam"
-                    );
-                  }
+                  if (!isRunning && !loading) setSelectedMode("exam");
                 }}
-                className={`
-                  p-5 rounded-2xl border
-                  cursor-pointer
-                  transition-all
-
-                  ${
-                    selectedMode ===
-                    "exam"
-                      ? "bg-purple-600/20 border-purple-500 shadow-lg shadow-purple-500/20"
-                      : "bg-[#071828] border-white/10 hover:border-purple-400/50"
-                  }
-
-                  ${
-                    isRunning &&
-                    selectedMode !==
-                      "exam"
-                      ? "opacity-40 cursor-not-allowed"
-                      : ""
-                  }
-                `}
+                className={`p-5 rounded-2xl border cursor-pointer transition-all ${
+                  selectedMode === "exam"
+                    ? "bg-purple-600/20 border-purple-500 shadow-lg shadow-purple-500/20"
+                    : "bg-[#071828] border-white/10 hover:border-purple-400/50"
+                } ${isRunning && selectedMode !== "exam" ? "opacity-40 cursor-not-allowed" : ""}`}
               >
-
-                <div className="text-2xl mb-2">
-                  🛡️
-                </div>
-
-                <h3 className="font-bold text-base text-white">
-                  Exam Proctor Preset
-                </h3>
-
+                <div className="text-2xl mb-2">🛡️</div>
+                <h3 className="font-bold text-base text-white">Exam Proctor Preset</h3>
                 <p className="text-xs text-gray-400 mt-1 leading-relaxed">
-                  Detects cheating and
-                  non-cheating behavior
-                  during examination
-                  monitoring.
+                  Detects cheating and non-cheating behavior during examination monitoring.
                 </p>
-
               </div>
-
             </div>
 
-            {/* INPUT SOURCE */}
+            {/* INPUT SOURCE SELECTOR */}
             <div className="mt-6">
+              <h3 className="text-sm font-bold text-gray-200 mb-3">Input Source</h3>
 
-              <h3 className="text-sm font-bold text-gray-200 mb-3">
-                Input Source
-              </h3>
-
-              <div className="grid grid-cols-2 gap-3">
-
-                {/* LIVE CAMERA */}
+              <div className="grid grid-cols-3 gap-2">
+                {/* 1. LIVE CAMERA */}
                 <button
                   type="button"
-                  disabled={
-                    isRunning ||
-                    loading
-                  }
-                  onClick={() =>
-                    setInputSource(
-                      "camera"
-                    )
-                  }
-                  className={`
-                    p-3 rounded-xl
-                    border text-left
-                    transition-all
-
-                    ${
-                      inputSource ===
-                      "camera"
-                        ? "bg-green-500/15 border-green-500 text-green-300"
-                        : "bg-[#071828] border-white/10 text-gray-400 hover:border-green-400/50"
-                    }
-
-                    disabled:opacity-50
-                    disabled:cursor-not-allowed
-                  `}
+                  disabled={isRunning || loading}
+                  onClick={() => setInputSource("camera")}
+                  className={`p-3 rounded-xl border text-left transition-all ${
+                    inputSource === "camera"
+                      ? "bg-green-500/15 border-green-500 text-green-300"
+                      : "bg-[#071828] border-white/10 text-gray-400 hover:border-green-400/50"
+                  } disabled:opacity-50`}
                 >
-
-                  <div className="text-lg">
-                    📹
-                  </div>
-
-                  <div className="font-bold text-xs mt-1">
-                    Live Camera
-                  </div>
-
-                  <div className="text-[10px] opacity-70 mt-1">
-                    Real-time webcam
-                    inference
-                  </div>
-
+                  <div className="text-base">📹</div>
+                  <div className="font-bold text-xs mt-1">Live Camera</div>
+                  <div className="text-[9px] opacity-70">Webcam</div>
                 </button>
 
-                {/* DEMO VIDEO */}
+                {/* 2. SERVER DEMO VIDEO */}
                 <button
                   type="button"
-                  disabled={
-                    isRunning ||
-                    loading
-                  }
-                  onClick={() =>
-                    setInputSource(
-                      "demo"
-                    )
-                  }
-                  className={`
-                    p-3 rounded-xl
-                    border text-left
-                    transition-all
-
-                    ${
-                      inputSource ===
-                      "demo"
-                        ? "bg-cyan-500/15 border-cyan-500 text-cyan-300"
-                        : "bg-[#071828] border-white/10 text-gray-400 hover:border-cyan-400/50"
-                    }
-
-                    disabled:opacity-50
-                    disabled:cursor-not-allowed
-                  `}
+                  disabled={isRunning || loading}
+                  onClick={() => setInputSource("demo")}
+                  className={`p-3 rounded-xl border text-left transition-all ${
+                    inputSource === "demo"
+                      ? "bg-cyan-500/15 border-cyan-500 text-cyan-300"
+                      : "bg-[#071828] border-white/10 text-gray-400 hover:border-cyan-400/50"
+                  } disabled:opacity-50`}
                 >
-
-                  <div className="text-lg">
-                    🎬
-                  </div>
-
-                  <div className="font-bold text-xs mt-1">
-                    Demo Video
-                  </div>
-
-                  <div className="text-[10px] opacity-70 mt-1">
-                    Pre-recorded AI
-                    inference
-                  </div>
-
+                  <div className="text-base">🎬</div>
+                  <div className="font-bold text-xs mt-1">Demo Video</div>
+                  <div className="text-[9px] opacity-70">Server Sample</div>
                 </button>
 
+                {/* 3. UPLOAD CUSTOM VIDEO FROM PC */}
+                <button
+                  type="button"
+                  disabled={isRunning || loading}
+                  onClick={() => {
+                    setInputSource("custom_upload");
+                    fileInputRef.current?.click();
+                  }}
+                  className={`p-3 rounded-xl border text-left transition-all ${
+                    inputSource === "custom_upload"
+                      ? "bg-purple-500/20 border-purple-500 text-purple-300 shadow-md shadow-purple-500/20"
+                      : "bg-[#071828] border-white/10 text-gray-400 hover:border-purple-400/50"
+                  } disabled:opacity-50`}
+                >
+                  <div className="text-base">📁</div>
+                  <div className="font-bold text-xs mt-1">Upload Video</div>
+                  <div className="text-[9px] opacity-70">From PC</div>
+                </button>
               </div>
 
-              {/* DEMO INFO */}
-              {inputSource ===
-                "demo" && (
-                <div className="mt-3 p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/20">
+              {/* Hidden file input for uploading PC video */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="video/*"
+                onChange={handleFileChange}
+                className="hidden"
+              />
 
-                  <div className="text-xs font-bold text-cyan-300">
-                    PRE-RECORDED AI DEMO
+              {/* DISPLAY SELECTED UPLOADED VIDEO */}
+              {inputSource === "custom_upload" && (
+                <div className="mt-3 p-3 rounded-xl bg-purple-500/10 border border-purple-500/30">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[11px] font-bold text-purple-300 uppercase">
+                      Chosen PC Video File:
+                    </span>
+                    <button
+                      type="button"
+                      disabled={isRunning || loading}
+                      onClick={() => fileInputRef.current?.click()}
+                      className="text-[10px] text-purple-400 hover:text-white underline font-semibold"
+                    >
+                      Browse...
+                    </button>
                   </div>
-
-                  <p className="text-[11px] text-gray-400 mt-1 leading-relaxed">
-                    The demo video is
-                    processed frame by
-                    frame using the same
-                    Student360 AI
-                    inference pipeline.
+                  <p className="text-xs font-mono text-gray-200 mt-1 truncate">
+                    {uploadedVideoFile ? `🎬 ${uploadedVideoFile.name}` : "⚠️ No file selected yet (Click to browse)"}
                   </p>
-
                 </div>
               )}
 
+              {inputSource === "demo" && (
+                <div className="mt-3 p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/20">
+                  <div className="text-xs font-bold text-cyan-300">PRE-RECORDED AI DEMO</div>
+                  <p className="text-[11px] text-gray-400 mt-1 leading-relaxed">
+                    Uses backend pre-recorded demo video files and processes them frame by frame.
+                  </p>
+                </div>
+              )}
             </div>
-
           </div>
 
           {/* START / STOP BUTTON */}
           <div className="pt-6 border-t border-white/10">
-
             {!isRunning ? (
               <button
-                onClick={
-                  startSession
-                }
-                disabled={
-                  !selectedMode ||
-                  loading
-                }
+                onClick={startSession}
+                disabled={!selectedMode || loading || (inputSource === "custom_upload" && !uploadedVideoFile)}
                 className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl font-bold uppercase tracking-wider text-sm shadow-xl transition-all"
               >
-
-                {loading
-                  ? "Initializing..."
-                  : launchText}
-
+                {loading ? "Initializing..." : launchText}
               </button>
             ) : (
               <button
-                onClick={
-                  stopSession
-                }
+                onClick={stopSession}
                 disabled={loading}
                 className="w-full py-4 bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded-xl font-bold uppercase tracking-wider text-sm shadow-xl transition-all"
               >
-
-                {loading
-                  ? "Terminating..."
-                  : "Terminate & Export Log"}
-
+                {loading ? "Terminating..." : "Terminate & Export Log"}
               </button>
             )}
-
           </div>
-
         </div>
 
-        {/* VIDEO PANEL */}
+        {/* RIGHT VIDEO PANEL */}
         <div className="lg:col-span-2 bg-[#091d30] border border-white/10 rounded-2xl p-4 flex flex-col">
-
           <div className="flex justify-between items-center mb-3 gap-3">
-
             <span className="text-xs font-bold uppercase text-gray-400 flex items-center gap-2">
-
               <span
-                className={`
-                  w-2.5 h-2.5
-                  rounded-full
-
-                  ${
-                    streamStatus ===
-                    "connected"
-                      ? "bg-green-500 animate-pulse"
-                      : streamStatus ===
-                        "error"
-                      ? "bg-red-500"
-                      : "bg-gray-500"
-                  }
-                `}
+                className={`w-2.5 h-2.5 rounded-full ${
+                  streamStatus === "connected"
+                    ? "bg-green-500 animate-pulse"
+                    : streamStatus === "error"
+                    ? "bg-red-500"
+                    : "bg-gray-500"
+                }`}
               ></span>
-
-              Surveillance Stream
-              Output
-
+              Surveillance Stream Output
             </span>
 
             <div className="flex items-center gap-2 flex-wrap justify-end">
-
               {isRunning && (
                 <span
-                  className={`
-                    px-3 py-1
-                    text-xs font-mono
-                    font-bold
-                    rounded-lg border
-
-                    ${
-                      inputSource ===
-                      "camera"
-                        ? "bg-green-500/20 text-green-400 border-green-500/30"
-                        : "bg-cyan-500/20 text-cyan-300 border-cyan-500/30"
-                    }
-                  `}
+                  className={`px-3 py-1 text-xs font-mono font-bold rounded-lg border ${
+                    inputSource === "camera"
+                      ? "bg-green-500/20 text-green-400 border-green-500/30"
+                      : inputSource === "custom_upload"
+                      ? "bg-purple-500/20 text-purple-300 border-purple-500/30"
+                      : "bg-cyan-500/20 text-cyan-300 border-cyan-500/30"
+                  }`}
                 >
-
-                  {inputSource ===
-                  "camera"
+                  {inputSource === "camera"
                     ? "● LIVE CAMERA"
-                    : "● PRE-RECORDED AI DEMO"}
-
+                    : inputSource === "custom_upload"
+                    ? "● UPLOADED PC VIDEO"
+                    : "● PRESET DEMO VIDEO"}
                 </span>
               )}
 
-              {streamStatus ===
-                "connected" && (
+              {streamStatus === "connected" && (
                 <span className="px-3 py-1 bg-green-500/20 text-green-400 text-xs font-mono font-bold rounded-lg border border-green-500/30">
-                  ● AI INFERENCE
-                  RUNNING
+                  ● AI INFERENCE RUNNING
                 </span>
               )}
 
-              {streamStatus ===
-                "connecting" && (
+              {streamStatus === "connecting" && (
                 <span className="px-3 py-1 bg-yellow-500/20 text-yellow-400 text-xs font-mono rounded-lg">
                   CONNECTING...
                 </span>
               )}
 
-              {streamStatus ===
-                "error" && (
+              {streamStatus === "error" && (
                 <span className="px-3 py-1 bg-red-500/20 text-red-400 text-xs font-mono rounded-lg">
                   STREAM ERROR
                 </span>
               )}
-
             </div>
-
           </div>
 
-          {/* VIDEO */}
+          {/* VIDEO FEED STREAM */}
           <div className="flex-1 bg-black rounded-xl border border-white/10 flex items-center justify-center overflow-hidden min-h-[420px] relative">
-
-            {streamUrl &&
-            streamStatus !==
-              "error" ? (
-
+            {streamUrl && streamStatus !== "error" ? (
               <img
                 key={streamUrl}
                 src={streamUrl}
                 alt="Student360 AI Detection Feed"
-                onLoad={
-                  handleStreamLoad
-                }
-                onError={
-                  handleStreamError
-                }
+                onLoad={handleStreamLoad}
+                onError={handleStreamError}
                 className="absolute inset-0 w-full h-full object-contain"
               />
-
             ) : (
-
               <div className="text-center p-8">
-
                 <div className="text-5xl mb-4 opacity-50">
-                  {streamStatus ===
-                  "error"
-                    ? "⚠️"
-                    : "📹"}
+                  {streamStatus === "error" ? "⚠️" : "📹"}
                 </div>
-
                 <h3 className="text-lg font-bold text-gray-300">
-
-                  {streamStatus ===
-                  "error"
+                  {streamStatus === "error"
                     ? "AI Stream Failed"
-                    : streamStatus ===
-                      "connecting"
+                    : streamStatus === "connecting"
                     ? `Connecting to ${sourceTitle}...`
                     : "AI Feed Inactive"}
-
                 </h3>
-
                 <p className="text-xs text-gray-500 mt-2 max-w-sm mx-auto">
-
-                  {streamError ||
-                    "Choose a preset and input source, then launch the AI feed."}
-
+                  {streamError || "Choose a preset and input source, then launch the AI feed."}
                 </p>
-
               </div>
-
             )}
-
           </div>
 
-          {/* CURRENT SELECTION */}
-          {selectedMode &&
-            !isRunning && (
-              <div className="mt-3 text-xs text-gray-500">
-
-                Selected:
-
-                <span className="text-gray-300 font-semibold ml-1">
-                  {selectedMode ===
-                  "classroom"
-                    ? "Smart Classroom"
-                    : "Exam Proctor"}
-                </span>
-
-                <span className="mx-2">
-                  •
-                </span>
-
-                <span className="text-gray-300 font-semibold">
-                  {sourceTitle}
-                </span>
-
-              </div>
-            )}
-
+          {/* CURRENT SELECTION BADGES */}
+          {selectedMode && !isRunning && (
+            <div className="mt-3 text-xs text-gray-500">
+              Selected:
+              <span className="text-gray-300 font-semibold ml-1">
+                {selectedMode === "classroom" ? "Smart Classroom" : "Exam Proctor"}
+              </span>
+              <span className="mx-2">•</span>
+              <span className="text-gray-300 font-semibold">{sourceTitle}</span>
+              {inputSource === "custom_upload" && uploadedVideoFile && (
+                <span className="text-purple-400 font-mono ml-2">({uploadedVideoFile.name})</span>
+              )}
+            </div>
+          )}
         </div>
-
       </div>
     </div>
   );
