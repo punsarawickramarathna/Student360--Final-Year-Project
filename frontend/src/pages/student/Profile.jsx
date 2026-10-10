@@ -27,7 +27,14 @@ export default function Profile() {
       setError("");
 
       const result = await getMyProfile();
-      const profileData = result.user || result;
+      const profileData =
+        result?.user ||
+        result?.student ||
+        result?.data?.user ||
+        result?.data?.student ||
+        result?.data ||
+        result ||
+        {};
 
       setProfile(profileData);
 
@@ -195,15 +202,35 @@ export default function Profile() {
                 />
                 <ProfileItem
                   label="Academic Year"
-                  value={profile.academic_year || profile.year || "Not Provided"}
+                  value={
+                    profile.academic_year ||
+                    profile.year ||
+                    profile.academic_details?.academic_year ||
+                    profile.academic_details?.year ||
+                    "Not Provided"
+                  }
                 />
                 <ProfileItem
                   label="Semester"
-                  value={profile.semester || "Not Provided"}
+                  value={
+                    profile.semester ||
+                    profile.sem ||
+                    profile.current_semester ||
+                    profile.academic_details?.semester ||
+                    profile.academic_details?.sem ||
+                    "Not Provided"
+                  }
                 />
                 <ProfileItem
                   label="Group"
-                  value={profile.group || "Not Provided"}
+                  value={
+                    profile.group ||
+                    profile.student_group ||
+                    profile.batch_group ||
+                    profile.batch ||
+                    profile.academic_details?.group ||
+                    "Not Provided"
+                  }
                 />
                 <ProfileItem
                   label="Enrolled Role"

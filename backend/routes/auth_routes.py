@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from database import users_collection
+from database import users_collection, students_collection
 from auth import hash_password, verify_password, create_access_token
 from models import UserCreate, LoginModel
 
@@ -65,6 +65,22 @@ def login(data: LoginModel):
 
     user_id_val = user.get("student_id") or user.get("user_id")
 
+    # If student, lookup students_collection to ensure cohort details are populated
+    student_doc = {}
+    if user.get("role") == "student":
+        student_doc = students_collection.find_one({
+            "$or": [
+                {"student_id": user_id_val},
+                {"user_id": user_id_val}
+            ]
+        }) or {}
+
+    academic_year = str(user.get("academic_year") or user.get("year") or student_doc.get("academic_year") or student_doc.get("year") or "")
+    semester = str(user.get("semester") or student_doc.get("semester") or user.get("sem") or student_doc.get("sem") or "")
+    group = str(user.get("group") or student_doc.get("group") or user.get("student_group") or student_doc.get("student_group") or "")
+    department = str(user.get("department") or student_doc.get("department") or "")
+    intake = str(user.get("intake") or student_doc.get("intake") or "")
+
     token = create_access_token({
         "student_id": user_id_val,
         "role": user.get("role", "student")
@@ -74,11 +90,18 @@ def login(data: LoginModel):
         "token": token,
         "user": {
             "student_id": user_id_val,
+            "user_id": user_id_val,
             "name": user.get("name", ""),
-            "intake": user.get("intake", ""),
+            "intake": intake,
             "role": user.get("role", "student"),
-            "department": user.get("department", ""),
-            "year": user.get("year", ""),
+            "department": department,
+            "year": academic_year,
+            "academic_year": academic_year,
+            "semester": semester,
+            "sem": semester,
+            "group": group,
+            "student_group": group,
+            "batch": f"Intake {intake}" if intake else "",
             "email": user.get("email", ""),
             "phone": user.get("phone", ""),
             "address": user.get("address", ""),

@@ -12,8 +12,7 @@ import { useNavigate } from "react-router-dom";
 import Navbar from "../../components/Navbar";
 import AttendanceTable from "../../components/AttendanceTable";
 
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
+import { exportAcademicReportPDF } from "../../utils/generatePdfReport";
 
 import {
   AreaChart,
@@ -33,9 +32,11 @@ import {
 
 import {
   getAttendance,
+  getStudentAttendance,
   getBehavior,
   getAppeals,
   getSessions,
+  getMyProfile,
 } from "../../api/api";
 
 const BEHAVIOR_COLORS = [
@@ -50,15 +51,16 @@ export default function StudentDashboard() {
   const navigate = useNavigate();
   const dashboardRef = useRef(null);
 
-  const student = useMemo(() => {
+  const [student, setStudent] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem("user")) || {};
     } catch {
       return {};
     }
-  }, []);
+  });
 
   const [attendance, setAttendance] = useState([]);
+  const [attendanceSummary, setAttendanceSummary] = useState(null);
   const [behavior, setBehavior] = useState([]);
   const [appeals, setAppeals] = useState([]);
   const [sessions, setSessions] = useState({ count: 0, data: [] });
@@ -67,14 +69,26 @@ export default function StudentDashboard() {
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState("");
 
+  const studentId =
+    student.student_id ||
+    student.user_id ||
+    student.id ||
+    student.username ||
+    "";
+
   useEffect(() => {
     loadData();
-  }, []);
+  }, [studentId]);
 
   const getArrayData = (response) => {
+    if (!response) return [];
     if (Array.isArray(response)) return response;
+    if (Array.isArray(response?.history)) return response.history;
     if (Array.isArray(response?.data)) return response.data;
+    if (Array.isArray(response?.data?.history)) return response.data.history;
     if (Array.isArray(response?.data?.data)) return response.data.data;
+    if (Array.isArray(response?.attendance)) return response.attendance;
+    if (Array.isArray(response?.records)) return response.records;
     return [];
   };
 
@@ -103,18 +117,45 @@ export default function StudentDashboard() {
 
     try {
       const [
+        profileResponse,
         attendanceResponse,
         behaviorResponse,
         appealsResponse,
         sessionsResponse,
       ] = await Promise.all([
-        getAttendance(),
+        getMyProfile().catch(() => null),
+        getStudentAttendance(studentId),
         getBehavior(),
         getAppeals(),
         getSessions(),
       ]);
 
-      setAttendance(getArrayData(attendanceResponse));
+      if (profileResponse) {
+        const freshProfile =
+          profileResponse?.user ||
+          profileResponse?.student ||
+          profileResponse?.data?.user ||
+          profileResponse?.data?.student ||
+          profileResponse?.data ||
+          profileResponse;
+        if (freshProfile && typeof freshProfile === "object") {
+          setStudent((prev) => ({ ...prev, ...freshProfile }));
+          const oldUser = JSON.parse(localStorage.getItem("user") || "{}");
+          localStorage.setItem("user", JSON.stringify({ ...oldUser, ...freshProfile }));
+        }
+      }
+
+      const attendanceList = getArrayData(attendanceResponse);
+      setAttendance(attendanceList);
+
+      if (attendanceResponse && typeof attendanceResponse === "object" && !Array.isArray(attendanceResponse)) {
+        setAttendanceSummary({
+          total_sessions: attendanceResponse.total_sessions ?? attendanceResponse.data?.total_sessions,
+          present_count: attendanceResponse.present_count ?? attendanceResponse.data?.present_count,
+          percentage: attendanceResponse.percentage ?? attendanceResponse.data?.percentage,
+        });
+      }
+
       setBehavior(getArrayData(behaviorResponse));
       setAppeals(getArrayData(appealsResponse));
       setSessions(getSessionData(sessionsResponse));
@@ -130,22 +171,18 @@ export default function StudentDashboard() {
     }
   }
 
-  const studentId =
-    student.student_id ||
-    student.id ||
-    student.username ||
-    "";
-
   const sameStudent = (record) => {
     if (!record) return false;
     const recordId = String(
       record?.student_id || record?.studentId || record?.user_id || record?.id || ""
     ).trim().toLowerCase();
     const currentStudentId = String(studentId).trim().toLowerCase();
+    if (!recordId || !currentStudentId) return true;
     return recordId === currentStudentId;
   };
 
-  const myAttendance = attendance.filter(sameStudent);
+  const filteredAttendance = attendance.filter(sameStudent);
+  const myAttendance = filteredAttendance.length > 0 ? filteredAttendance : attendance;
   const myBehavior = behavior.filter(sameStudent);
   const myAppeals = appeals.filter(sameStudent);
 
@@ -165,12 +202,19 @@ export default function StudentDashboard() {
   const myExamBehavior = myBehavior.filter(isExamRecord);
   const myLectureBehavior = myBehavior.filter((item) => !isExamRecord(item));
 
-  const totalSessions = Number(sessions.count || sessions.data?.length || 0);
+  const backendTotal = attendanceSummary?.total_sessions;
+  const totalSessions =
+    backendTotal !== undefined && backendTotal !== null && Number(backendTotal) > 0
+      ? Number(backendTotal)
+      : Number(sessions.count || sessions.data?.length || 0) || myAttendance.length;
 
+  const backendPercentage = attendanceSummary?.percentage;
   const attendanceRate =
-    totalSessions > 0
-      ? Math.min(Math.round((myAttendance.length / totalSessions) * 100), 100)
-      : 0;
+    backendPercentage !== undefined && backendPercentage !== null
+      ? Math.min(Math.max(Math.round(backendPercentage), 0), 100)
+      : totalSessions > 0
+        ? Math.min(Math.round((myAttendance.length / totalSessions) * 100), 100)
+        : 0;
 
   let attentiveTime = 0;
   let sleepingTime = 0;
@@ -271,43 +315,32 @@ export default function StudentDashboard() {
     { name: "Suspicious", value: Number(lectureCheatingTime.toFixed(1)) },
   ].filter((item) => item.value > 0);
 
-  const attendanceRecords = myAttendance.map((item) => ({
-    date: item.date || item.created_at || "-",
-    status: item.status || "Present",
-  }));
+  const attendanceRecords = myAttendance.map((item) => {
+    const rawStatus = String(item.status || "Present").trim();
+    const status = rawStatus.toLowerCase() === "absent" ? "Absent" : "Present";
+    return {
+      date: item.date || (typeof item.created_at === "string" ? item.created_at.substring(0, 10) : "-"),
+      arrival_time: item.arrival_time || "-",
+      status: status,
+    };
+  });
 
-  const downloadPDF = async () => {
-    if (!dashboardRef.current) return;
+  const downloadPDF = () => {
     try {
       setDownloading(true);
-      const canvas = await html2canvas(dashboardRef.current, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: "#030c18",
-      });
-
-      const imageData = canvas.toDataURL("image/png");
-      const pdf = new jsPDF("p", "mm", "a4");
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const imageHeight = (canvas.height * pdfWidth) / canvas.width;
-
-      let heightLeft = imageHeight;
-      let position = 0;
-
-      pdf.addImage(imageData, "PNG", 0, position, pdfWidth, imageHeight);
-      heightLeft -= pageHeight;
-
-      while (heightLeft > 0) {
-        position = heightLeft - imageHeight;
-        pdf.addPage();
-        pdf.addImage(imageData, "PNG", 0, position, pdfWidth, imageHeight);
-        heightLeft -= pageHeight;
-      }
-
-      pdf.save(`Student360_${studentId || "Student"}_Report.pdf`);
+      exportAcademicReportPDF(
+        student,
+        attendanceRecords.length > 0 ? attendanceRecords : myAttendance,
+        {
+          totalSessions,
+          attendanceRate,
+          behaviorScore,
+          examBehaviorScore,
+          overallScore,
+        }
+      );
     } catch (err) {
-      console.error("PDF error:", err);
+      console.error("Academic report export error:", err);
       alert("Unable to generate PDF report.");
     } finally {
       setDownloading(false);
@@ -391,6 +424,33 @@ export default function StudentDashboard() {
                   </>
                 )}
 
+                {(student.academic_year || student.year) && (
+                  <>
+                    <span className="text-slate-600">•</span>
+                    <span className="text-slate-400 text-xs font-medium bg-slate-900/50 px-2.5 py-1 rounded-lg border border-slate-800/60">
+                      Year {student.academic_year || student.year}
+                    </span>
+                  </>
+                )}
+
+                {(student.semester || student.sem) && (
+                  <>
+                    <span className="text-slate-600">•</span>
+                    <span className="text-slate-400 text-xs font-medium bg-slate-900/50 px-2.5 py-1 rounded-lg border border-slate-800/60">
+                      Semester {student.semester || student.sem}
+                    </span>
+                  </>
+                )}
+
+                {student.group && (
+                  <>
+                    <span className="text-slate-600">•</span>
+                    <span className="text-slate-400 text-xs font-medium bg-slate-900/50 px-2.5 py-1 rounded-lg border border-slate-800/60">
+                      Group {student.group}
+                    </span>
+                  </>
+                )}
+
                 <span className="text-slate-600">•</span>
                 <span className={`inline-flex px-3 py-1 rounded-full text-xs font-bold border shadow-xs ${badgeColor}`}>
                   {badge}
@@ -411,7 +471,7 @@ export default function StudentDashboard() {
                 disabled={downloading}
                 className="px-4 py-2.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-slate-200 font-bold text-xs transition"
               >
-                {downloading ? "Generating..." : "Download PDF"}
+                {downloading ? "Generating Report..." : "Download Academic Report"}
               </button>
             </div>
           </div>

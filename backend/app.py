@@ -88,7 +88,7 @@ app.include_router(upload_router)
 
 # Evidence routes mounted for direct and prefixed API access
 app.include_router(evidence_router, tags=["Evidence"])
-app.include_router(evidence_router, prefix="/api/evidence", tags=["Evidence API"])
+app.include_router(evidence_router, prefix="/api", tags=["Evidence API"])
 
 app.include_router(timeline_router)
 app.include_router(sessions_router)

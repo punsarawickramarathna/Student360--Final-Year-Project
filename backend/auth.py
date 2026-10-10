@@ -64,15 +64,22 @@ def get_current_user(
             algorithms=[ALGORITHM]
         )
 
-        student_id = payload.get("student_id")
-        role = payload.get("role")
+        student_id = (
+            payload.get("student_id")
+            or payload.get("user_id")
+            or payload.get("sub")
+            or payload.get("id")
+        )
+        role = payload.get("role", "student")
 
-        if not student_id or not role:
+        if not student_id:
             raise credentials_error
 
         return {
-            "student_id": student_id,
-            "role": role
+            "student_id": str(student_id),
+            "user_id": str(payload.get("user_id") or student_id),
+            "role": role,
+            "payload": payload
         }
 
     except JWTError:

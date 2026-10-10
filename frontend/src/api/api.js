@@ -89,10 +89,39 @@ export const getStudents = async () => {
 // Attendance
 // ---------------------------------
 
-export const getAttendance = async () => {
-  const response = await fetch(`${API}/attendance`);
+export const getAttendance = async (studentId) => {
+  if (studentId && String(studentId).trim() && String(studentId).trim() !== "undefined" && String(studentId).trim() !== "null") {
+    return getStudentAttendance(studentId);
+  }
+
+  const response = await fetch(`${API}/attendance`, {
+    headers: {
+      ...getAuthHeaders(),
+    },
+  });
 
   return handleResponse(response);
+};
+
+export const getStudentAttendance = async (studentId) => {
+  const cleanId = String(studentId || "").trim();
+  const hasValidId = cleanId && cleanId !== "undefined" && cleanId !== "null";
+
+  const url = hasValidId
+    ? `${API}/attendance/student/${encodeURIComponent(cleanId)}`
+    : `${API}/student/attendance`;
+
+  const response = await fetch(url, {
+    headers: {
+      ...getAuthHeaders(),
+    },
+  });
+
+  return handleResponse(response);
+};
+
+export const fetchAttendanceByStudentId = async (studentId) => {
+  return getStudentAttendance(studentId);
 };
 
 // ---------------------------------
@@ -205,6 +234,22 @@ export const uploadSessionCSV = async (file) => {
 
 export const getMyProfile = async () => {
   const response = await fetch(`${API}/profile/me`, {
+    method: "GET",
+    headers: {
+      ...getAuthHeaders(),
+    },
+  });
+
+  return handleResponse(response);
+};
+
+export const getStudentProfile = async (studentId) => {
+  const cleanId = String(studentId || "").trim();
+  const url = cleanId && cleanId !== "undefined" && cleanId !== "null"
+    ? `${API}/profile/student/${encodeURIComponent(cleanId)}`
+    : `${API}/profile/me`;
+
+  const response = await fetch(url, {
     method: "GET",
     headers: {
       ...getAuthHeaders(),

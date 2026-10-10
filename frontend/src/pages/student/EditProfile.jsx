@@ -43,15 +43,22 @@ export default function EditProfile() {
       setError("");
 
       const result = await getMyProfile();
-      const profileData = result.user || result;
+      const profileData =
+        result?.user ||
+        result?.student ||
+        result?.data?.user ||
+        result?.data?.student ||
+        result?.data ||
+        result ||
+        {};
 
       setName(profileData.name || "");
-      setStudentId(profileData.student_id || "");
-      setIntake(profileData.intake || "");
-      setDepartment(profileData.department || "");
-      setYear(profileData.year || profileData.academic_year || "");
-      setSemester(profileData.semester || profileData.sem || "");
-      setGroup(profileData.group || "");
+      setStudentId(profileData.student_id || profileData.user_id || "");
+      setIntake(profileData.intake || profileData.academic_details?.intake || "");
+      setDepartment(profileData.department || profileData.academic_details?.department || "");
+      setYear(profileData.academic_year || profileData.year || profileData.academic_details?.academic_year || profileData.academic_details?.year || "");
+      setSemester(profileData.semester || profileData.sem || profileData.current_semester || profileData.academic_details?.semester || profileData.academic_details?.sem || "");
+      setGroup(profileData.group || profileData.student_group || profileData.batch_group || profileData.batch || profileData.academic_details?.group || "");
       setEmail(profileData.email || "");
       setPhone(profileData.phone || "");
       setAddress(profileData.address || "");
@@ -88,18 +95,26 @@ export default function EditProfile() {
       const result = await updateMyProfile({
         name,
         year,
+        academic_year: year,
         semester,
         group,
         phone,
         address,
       });
 
-      const updatedProfile = result.user || result;
+      const updatedProfile =
+        result?.user ||
+        result?.student ||
+        result?.data?.user ||
+        result?.data?.student ||
+        result?.data ||
+        result ||
+        {};
 
       setName(updatedProfile.name || name);
-      setYear(updatedProfile.year || year);
-      setSemester(updatedProfile.semester || semester);
-      setGroup(updatedProfile.group || group);
+      setYear(updatedProfile.academic_year || updatedProfile.year || year);
+      setSemester(updatedProfile.semester || updatedProfile.sem || semester);
+      setGroup(updatedProfile.group || updatedProfile.student_group || group);
       setPhone(updatedProfile.phone || phone);
       setAddress(updatedProfile.address || address);
 

@@ -373,6 +373,18 @@ async def register_student(
                 "department":
                     department,
 
+                "academic_year":
+                    academic_year,
+
+                "year":
+                    academic_year,
+
+                "semester":
+                    semester,
+
+                "group":
+                    group,
+
                 "account_status":
                     "active"
             }

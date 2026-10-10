@@ -38,9 +38,9 @@ async def upload_evidence(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# Route handles both direct and prefixed calls seamlessly
-@router.get("/{student_id}")
+# Route handles both direct and api-prefixed calls explicitly
 @router.get("/evidence/{student_id}")
+@router.get("/api/evidence/{student_id}")
 def get_evidence(student_id: str):
     try:
         # Case-insensitive exact match
